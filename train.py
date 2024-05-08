@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from agent.runners.DreamerRunner import DreamerRunner
 from configs import Experiment, SimpleObservationConfig, NearRewardConfig, DeadlockPunishmentConfig, RewardsComposerConfig
@@ -15,7 +16,11 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default="flatland", help='Flatland or SMAC env')
     parser.add_argument('--env_name', type=str, default="5_agents", help='Specific setting')
-    parser.add_argument('--n_workers', type=int, default=2, help='Number of workers')
+    parser.add_argument('--n_workers', type=int, default=1, help='Number of workers')
+    parser.add_argument("--use_strategy_selector", action="store_true", help="use strategy selector", default=False)
+    parser.add_argument("--use_trajectory_synthesizer", action="store_true", help="use trajectory synthesizer", default=False)
+    parser.add_argument("--use_strategy_advantage", action="store_true", help="use strategy advantage", default=False)
+    parser.add_argument("--test_config", action="store_true", help="test config", default=False)
     return parser.parse_args()
 
 
@@ -77,6 +82,8 @@ if __name__ == "__main__":
     if args.env == Env.FLATLAND:
         configs = prepare_flatland_configs(args.env_name)
     elif args.env == Env.STARCRAFT:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
         configs = prepare_starcraft_configs(args.env_name)
     else:
         raise Exception("Unknown environment")

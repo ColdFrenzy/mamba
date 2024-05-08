@@ -47,11 +47,12 @@ def initialize_weights(mod, scale=1.0, mode='ortho'):
 
 
 class DreamerLearner:
-
+    # learner has both the actor and critic since it needs to optimize the policy gradient objective
+    # The controller has only the actor since it's used for inference.
     def __init__(self, config):
         self.config = config
         self.model = DreamerModel(config).to(config.DEVICE).eval()
-        self.actor = Actor(config.FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS).to(
+        self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS).to(
             config.DEVICE)
         self.critic = AugmentedCritic(config.FEAT, config.HIDDEN).to(config.DEVICE)
         initialize_weights(self.model, mode='xavier')
@@ -61,6 +62,10 @@ class DreamerLearner:
         self.replay_buffer = DreamerMemory(config.CAPACITY, config.SEQ_LENGTH, config.ACTION_SIZE, config.IN_DIM, 2,
                                            config.DEVICE, config.ENV_TYPE)
         self.entropy = config.ENTROPY
+        self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
+        self.use_strategy_advantage = config.USE_STRATEGY_ADVANTAGE
+        self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
+        self.use_wandb = config.USE_WANDB
         self.step_count = -1
         self.cur_update = 1
         self.accum_samples = 0
@@ -68,9 +73,10 @@ class DreamerLearner:
         self.init_optimizers()
         self.n_agents = 2
         Path(config.LOG_FOLDER).mkdir(parents=True, exist_ok=True)
-        global wandb
-        import wandb
-        wandb.init(dir=config.LOG_FOLDER)
+        if self.use_wandb:
+            global wandb
+            import wandb
+            wandb.init(dir=config.LOG_FOLDER)
 
     def init_optimizers(self):
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)
@@ -89,7 +95,7 @@ class DreamerLearner:
         self.accum_samples += len(rollout['action'])
         self.total_samples += len(rollout['action'])
         self.replay_buffer.append(rollout['observation'], rollout['action'], rollout['reward'], rollout['done'],
-                                  rollout['fake'], rollout['last'], rollout.get('avail_action'))
+                                  rollout['fake'], rollout['last'], rollout.get('avail_action'), rollout["neighbors_mask"])
         self.step_count += 1
         if self.accum_samples < self.config.N_SAMPLES:
             return
@@ -100,11 +106,13 @@ class DreamerLearner:
         self.accum_samples = 0
         sys.stdout.flush()
 
-        for i in range(self.config.MODEL_EPOCHS):
+        for i in range(1):# range(self.config.MODEL_EPOCHS):
+            # TODO: aggiungere qui selezione di strategie e policy condizionata su strategie
             samples = self.replay_buffer.sample(self.config.MODEL_BATCH_SIZE)
             self.train_model(samples)
 
         for i in range(self.config.EPOCHS):
+            # TODO: aggiungere qui strategy_advantage e trajectory_evaluator
             samples = self.replay_buffer.sample(self.config.BATCH_SIZE)
             self.train_agent(samples)
 
@@ -116,29 +124,42 @@ class DreamerLearner:
         self.model.eval()
 
     def train_agent(self, samples):
+        # requirs_grad: actions=False, av_actions=False, old_policy=False, imag_feat=False, returns=False
         actions, av_actions, old_policy, imag_feat, returns = actor_rollout(samples['observation'],
                                                                             samples['action'],
                                                                             samples['last'], self.model,
                                                                             self.actor,
                                                                             self.critic if self.config.ENV_TYPE == Env.STARCRAFT
                                                                             else self.old_critic,
-                                                                            self.config)
+                                                                            self.config,
+                                                                            samples['neighbors_mask'] if self.use_strategy_selector else None)
+        if self.use_strategy_advantage:
+            strategy_advantage = []
+            mean_strategy_value = torch.mean(returns.detach(), dim=0)
+            for strat in imag_feat:
+                strategy_advantage.append(mean_strategy_value - self.critic(strat).detach())
+            strategy_advantage = torch.stack(strategy_advantage, dim = 0)
         adv = returns.detach() - self.critic(imag_feat).detach()
         if self.config.ENV_TYPE == Env.STARCRAFT:
             adv = advantage(adv)
-        wandb.log({'Agent/Returns': returns.mean()})
+        if self.use_wandb:
+            wandb.log({'Agent/Returns': returns.mean()})
         for epoch in range(self.config.PPO_EPOCHS):
             inds = np.random.permutation(actions.shape[0])
             step = 2000
             for i in range(0, len(inds), step):
                 self.cur_update += 1
                 idx = inds[i:i + step]
-                loss = actor_loss(imag_feat[idx], actions[idx], av_actions[idx] if av_actions is not None else None,
-                                  old_policy[idx], adv[idx], self.actor, self.entropy)
+                if self.use_strategy_selector:
+                    loss = actor_loss(imag_feat[:, idx], actions[:, idx], av_actions[:, idx] if av_actions is not None else None,
+                                    old_policy[:, idx], adv[:, idx], self.actor, self.entropy, self.config)
+                else:
+                    loss = actor_loss(imag_feat[idx], actions[idx], av_actions[idx] if av_actions is not None else None,
+                                    old_policy[idx], adv[idx], self.actor, self.entropy, self.config)
                 self.apply_optimizer(self.actor_optimizer, self.actor, loss, self.config.GRAD_CLIP_POLICY)
                 self.entropy *= self.config.ENTROPY_ANNEALING
                 val_loss = value_loss(self.critic, imag_feat[idx], returns[idx])
-                if np.random.randint(20) == 9:
+                if self.use_wandb and np.random.randint(20) == 9:
                     wandb.log({'Agent/val_loss': val_loss, 'Agent/actor_loss': loss})
                 self.apply_optimizer(self.critic_optimizer, self.critic, val_loss, self.config.GRAD_CLIP_POLICY)
                 if self.config.ENV_TYPE == Env.FLATLAND and self.cur_update % self.config.TARGET_UPDATE == 0:

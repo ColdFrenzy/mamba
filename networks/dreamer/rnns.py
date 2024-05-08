@@ -35,7 +35,8 @@ class DiscreteLatentDist(nn.Module):
         latents = one_hot + class_dist.probs - class_dist.probs.detach()
         return logits.view(x.shape[:-1] + (-1,)), latents.view(x.shape[:-1] + (-1,))
 
-
+# RSSMTransition, it uses attention over all agents' previous actions and states and return the prior state. 
+# It returns the prior state.
 class RSSMTransition(nn.Module):
     def __init__(self, config, hidden_size=200, activation=nn.ReLU):
         super().__init__()
@@ -55,16 +56,19 @@ class RSSMTransition(nn.Module):
         return nn.Sequential(*rnn_input_model)
 
     def forward(self, prev_actions, prev_states, mask=None):
+        # The deter state only needs prev action and prev state
         batch_size = prev_actions.shape[0]
         n_agents = prev_actions.shape[1]
-        stoch_input = self._rnn_input_model(torch.cat([prev_actions, prev_states.stoch], dim=-1))
-        attn = self._attention_stack(stoch_input, mask=mask)
-        deter_state = self._cell(attn.reshape(1, batch_size * n_agents, -1),
-                                 prev_states.deter.reshape(1, batch_size * n_agents, -1))[0].reshape(batch_size, n_agents, -1)
+        stoch_input = self._rnn_input_model(torch.cat([prev_actions, prev_states.stoch], dim=-1))  #  actions [40, 3, 9] and stoch [40, 3, 1024]. Out [40, 3, 256]
+        attn = self._attention_stack(stoch_input, mask=mask)                                       # attn [40, 3, 256]
+        deter_state = self._cell(attn.reshape(1, batch_size * n_agents, -1), # attn reshaed [1, 120, 256] reshaped like that because GRU accept input as [seq_len, batch, input_size]
+                                 prev_states.deter.reshape(1, batch_size * n_agents, -1))[0].reshape(batch_size, n_agents, -1) # prev_states reshaped [1, 120, 256]
         logits, stoch_state = self._stochastic_prior_model(deter_state)
         return RSSMState(logits=logits, stoch=stoch_state, deter=deter_state)
 
 
+# Model that use RSSMTransition in order to return both the prior and posterior states, it just add the stochastic_posterior_model module.
+# It also returns the global state (deter + stoch)
 class RSSMRepresentation(nn.Module):
     def __init__(self, config, transition_model: RSSMTransition):
         super().__init__()
@@ -92,7 +96,7 @@ class RSSMRepresentation(nn.Module):
         posterior_states = RSSMState(logits=logits, stoch=stoch_state, deter=prior_states.deter)
         return prior_states, posterior_states
 
-
+# REAL ROLLOUT. Given the representation model and the real data return prior and posterior for each state
 def rollout_representation(representation_model, steps, obs_embed, action, prev_states, done):
     """
         Roll out the model with actions and observations from data.
@@ -114,7 +118,7 @@ def rollout_representation(representation_model, steps, obs_embed, action, prev_
     post = stack_states(posteriors, dim=0)
     return prior.map(lambda x: x[:-1]), post.map(lambda x: x[:-1]), post.deter[1:]
 
-
+# IMAGINED ROLLOUT. Given the transition model and the policy return an imagined rollout 
 def rollout_policy(transition_model, av_action, steps, policy, prev_state):
     """
         Roll out the model with a policy function.
@@ -130,7 +134,7 @@ def rollout_policy(transition_model, av_action, steps, policy, prev_state):
     av_actions = []
     policies = []
     for t in range(steps):
-        feat = state.get_features().detach()
+        feat = state.get_features().detach() # [720, 3, 1280]
         action, pi = policy(feat)
         if av_action is not None:
             avail_actions = av_action(feat).sample()
@@ -141,8 +145,62 @@ def rollout_policy(transition_model, av_action, steps, policy, prev_state):
         next_states.append(state)
         policies.append(pi)
         actions.append(action)
+        # In policy rollout the attention is always present, this means that the agent need to predict the next stoch state 
+        # and action of each agent. Not really scalable.
         state = transition_model(action, state)
     return {"imag_states": stack_states(next_states, dim=0),
             "actions": torch.stack(actions, dim=0),
             "av_actions": torch.stack(av_actions, dim=0) if len(av_actions) > 0 else None,
             "old_policy": torch.stack(policies, dim=0)}
+
+
+def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, steps, policy, prev_state, n_strategies):
+    """
+    Roll out the model with a policy function.
+    :param transition_model: RSSMTransition model
+    :param neighbors_mask: torch.Tensor(batch_size * num_heads, n_agents, n_agents)
+    :param steps: number of steps to roll out
+    :param policy: RSSMState -> action
+    :param prev_state: RSSM state, size(batch_size, state_size)
+    :param n_strategies: int, number of strategies
+    :return: next state, size(n_strategies, time_steps, batch_size, num_agents, stoch+deter)
+    """
+    state = prev_state
+    next_states, next_states_with_strategies = [], []
+    actions, actions_with_strategies = [], []
+    av_actions, av_actions_with_strategies = [], []
+    policies, policies_with_strategies = [], []
+    for strategy in range(n_strategies):
+        strategy_encoded = torch.zeros(state.stoch.size(0), state.stoch.size(1), n_strategies-1)
+        if strategy > 0:
+            strategy_encoded[:,:,strategy-1] = 1
+        for t in range(steps):
+            feat = state.get_features().detach()  # [1, 3, 1280]
+            strategy_feat = torch.cat([feat, strategy_encoded], dim=-1)
+            action, pi = policy(strategy_feat)
+            if av_action is not None:
+                avail_actions = av_action(feat).sample()
+                pi[avail_actions == 0] = -1e10
+                action_dist = OneHotCategorical(logits=pi)
+                action = action_dist.sample()
+                av_actions.append(avail_actions.squeeze(0))
+            if neighbors_mask.size(0) != state.stoch.size(0)*8:
+                print("stop there")
+            state = transition_model(action, state, neighbors_mask)
+            next_states.append(state)
+            policies.append(pi)
+            actions.append(action)
+        next_states_with_strategies.append(stack_states(next_states, dim=0))
+        actions_with_strategies.append(torch.stack(actions, dim=0))
+        policies_with_strategies.append(torch.stack(policies, dim=0))  
+        if av_action is not None:
+            av_actions_with_strategies.append(torch.stack(av_actions, dim=0))
+        next_states, actions, policies, av_actions = [], [], [], []
+    
+    return {"imag_states": stack_states(next_states_with_strategies, dim=0),
+            "actions": torch.stack(actions_with_strategies, dim=0),
+            "av_actions": torch.stack(av_actions_with_strategies, dim=0) if len(av_actions_with_strategies) > 0 else None,
+            "old_policy": torch.stack(policies_with_strategies, dim=0)}
+
+
+    

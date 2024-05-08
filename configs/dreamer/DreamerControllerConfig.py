@@ -1,7 +1,6 @@
 from agent.controllers.DreamerController import DreamerController
 from configs.dreamer.DreamerAgentConfig import DreamerConfig
 
-
 class DreamerControllerConfig(DreamerConfig):
     def __init__(self):
         super().__init__()

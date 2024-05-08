@@ -40,20 +40,32 @@ def calculate_ppo_loss(logits, rho, A):
     return polLoss, entLoss
 
 
-def batch_multi_agent(tensor, n_agents):
-    return tensor.view(-1, n_agents, tensor.shape[-1]) if tensor is not None else None
+def batch_multi_agent(tensor, n_agents, use_strategies=False):
+    if use_strategies:
+        return tensor.reshape(tensor.shape[0], -1, n_agents, tensor.shape[-1]) if tensor is not None else None
+
+    else:
+        return tensor.view(-1, n_agents, tensor.shape[-1]) if tensor is not None else None
 
 
-def compute_return(reward, value, discount, bootstrap, lmbda, gamma):
-    next_values = torch.cat([value[1:], bootstrap[None]], 0)
+def compute_return(reward, value, discount, bootstrap, lmbda, gamma, use_strategy_selector=False):
+    if use_strategy_selector:
+        next_values = torch.cat([value[:, 1:], bootstrap[:, None]], 1)
+    else:
+        next_values = torch.cat([value[1:], bootstrap[None]], 0)
     target = reward + gamma * discount * next_values * (1 - lmbda)
     outputs = []
     accumulated_reward = bootstrap
-    for t in reversed(range(reward.shape[0])):
-        discount_factor = discount[t]
-        accumulated_reward = target[t] + gamma * discount_factor * accumulated_reward * lmbda
+    timesteps = reward.shape[1] if use_strategy_selector else reward.shape[0]
+    for t in reversed(range(timesteps)):
+        discount_factor = discount[:,t] if use_strategy_selector else discount[t]
+        if use_strategy_selector:
+            accumulated_reward = target[:, t] + gamma * discount_factor * accumulated_reward * lmbda
+        else:
+            accumulated_reward = target[t] + gamma * discount_factor * accumulated_reward * lmbda
         outputs.append(accumulated_reward)
-    returns = torch.flip(torch.stack(outputs), [0])
+    returns = torch.transpose(torch.flip(torch.stack(outputs), [0]), 0, 1) if use_strategy_selector else torch.flip(torch.stack(outputs), [0])
+
     return returns
 
 

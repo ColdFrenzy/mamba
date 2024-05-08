@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import ray
+import random
 import torch
 from flatland.envs.agent_utils import RailAgentStatus
 from collections import defaultdict
@@ -25,14 +26,14 @@ class DreamerWorker:
             return self.env.agents[handle].status in (RailAgentStatus.ACTIVE, RailAgentStatus.READY_TO_DEPART) \
                    and not self.env.obs_builder.deadlock_checker.is_deadlocked(handle)
 
-    def _select_actions(self, state):
+    def _select_actions(self, state, steps_done, groups, neighbors_mask):
         avail_actions = []
         observations = []
         fakes = []
         if self.env_type == Env.FLATLAND:
             nn_mask = (1. - torch.eye(self.env.n_agents)).bool()
         else:
-            nn_mask = None
+            nn_mask =  (1. - neighbors_mask).bool() # nn_mask=None
 
         for handle in range(self.env.n_agents):
             if self.env_type == Env.FLATLAND:
@@ -56,13 +57,38 @@ class DreamerWorker:
         observations = torch.cat(observations).unsqueeze(0)
         av_action = torch.stack(avail_actions).unsqueeze(0) if len(avail_actions) > 0 else None
         nn_mask = nn_mask.unsqueeze(0).repeat(8, 1, 1) if nn_mask is not None else None
-        actions = self.controller.step(observations, av_action, nn_mask)
+        actions = self.controller.step(observations, av_action, nn_mask, groups, steps_done)
         return actions, observations, torch.cat(fakes).unsqueeze(0), av_action
 
     def _wrap(self, d):
         for key, value in d.items():
             d[key] = torch.tensor(value).float()
         return d
+                    
+    def create_group(self, neighbors_mask):
+        """create groups by randomizing the agents and adding neighbors to the group
+        :param neighbors_mask: torch.Tensor(n_agents, n_agents) is a tensor of 0s and 1s
+        :return group_mask: tensor of shape (n_groups, n_agents) where the number of groups is dynamic
+        """
+        group_mask = []
+        group_id = 0
+        agents = [i for i in range(self.env.n_agents)]
+        random.shuffle(agents)
+        agents_already_in_group = []
+        for idx in agents:
+            if idx not in agents_already_in_group:
+                group_mask.append(torch.zeros(self.env.n_agents))
+                group_mask[group_id][idx] = 1
+                agents_already_in_group.append(idx)
+                for neighbor_id, neighbor in enumerate(neighbors_mask[idx]):
+                    if neighbor_id != idx and int(neighbor) == 1 and neighbor_id not in agents_already_in_group:
+                        group_mask[group_id][neighbor_id] = 1
+                        agents_already_in_group.append(neighbor_id)
+                group_id += 1
+        group_mask = torch.stack(group_mask, dim=0)
+        assert group_mask.sum().item() == self.env.n_agents, f"Group mask sum: {group_mask.sum().item()} != {self.env.n_agents}"
+
+        return group_mask
 
     def get_absorbing_state(self):
         state = torch.zeros(1, self.in_dim)
@@ -90,19 +116,25 @@ class DreamerWorker:
         state = self._wrap(self.env.reset())
         steps_done = 0
         self.done = defaultdict(lambda: False)
-
         while True:
             steps_done += 1
-            actions, obs, fakes, av_actions = self._select_actions(state)
+            neighbors_mask = self.env.find_neighbors()
+            if not torch.all(neighbors_mask.transpose(0, 1) == neighbors_mask):
+                print("we have a problem here")
+            groups = self.create_group(neighbors_mask)
+            actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
             next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
             next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
+            neighbors_mask = deepcopy(torch.tensor(1. - neighbors_mask).bool())
             self.done = done
             self.controller.update_buffer({"action": actions,
                                            "observation": obs,
                                            "reward": self.augment(reward),
                                            "done": self.augment(done),
                                            "fake": fakes,
-                                           "avail_action": av_actions})
+                                           "avail_action": av_actions,
+                                           "neighbors_mask": neighbors_mask,
+                                           })
 
             state = next_state
             if all([done[key] == 1 for key in range(self.env.n_agents)]):
@@ -116,7 +148,8 @@ class DreamerWorker:
                              "reward": torch.zeros(1, self.env.n_agents, 1),
                              "fake": torch.ones(1, self.env.n_agents, 1),
                              "done": torch.ones(1, self.env.n_agents, 1),
-                             "avail_action": torch.ones_like(actions) if self.env_type == Env.STARCRAFT else None}
+                             "avail_action": torch.ones_like(actions) if self.env_type == Env.STARCRAFT else None,
+                             "neighbors_mask": torch.zeros(1, self.env.n_agents, self.env.n_agents, dtype=bool)}
                     self.controller.update_buffer(items)
                     self.controller.update_buffer(items)
                 break

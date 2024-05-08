@@ -23,11 +23,12 @@ class DreamerMemory:
         self.dones = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
         self.fake = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
         self.last = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
+        self.neighbors_mask = np.empty((self.capacity, n_agents, n_agents), dtype=bool)
         self.next_idx = 0
         self.n_agents = n_agents
         self.full = False
 
-    def append(self, obs, action, reward, done, fake, last, av_action):
+    def append(self, obs, action, reward, done, fake, last, av_action, neighbors_mask):
         if self.actions.shape[-2] != action.shape[-2]:
             self.init_buffer(action.shape[-2], self.env_type)
         for i in range(len(obs)):
@@ -39,6 +40,7 @@ class DreamerMemory:
             self.dones[self.next_idx] = done[i]
             self.fake[self.next_idx] = fake[i]
             self.last[self.next_idx] = last[i]
+            self.neighbors_mask[self.next_idx] = neighbors_mask[i]
             self.next_idx = (self.next_idx + 1) % self.capacity
             self.full = self.full or self.next_idx == 0
 
@@ -55,6 +57,7 @@ class DreamerMemory:
         batch_size = len(idxs)
         vec_idxs = idxs.transpose().reshape(-1)
         observation = self.process_batch(self.observations, vec_idxs, batch_size)[1:]
+        neighbors_mask = self.process_batch(self.neighbors_mask, vec_idxs, batch_size)[1:]
         reward = self.process_batch(self.rewards, vec_idxs, batch_size)[:-1]
         action = self.process_batch(self.actions, vec_idxs, batch_size)[:-1]
         av_action = self.process_batch(self.av_actions, vec_idxs, batch_size)[1:] if self.env_type == Env.STARCRAFT else None
@@ -63,7 +66,7 @@ class DreamerMemory:
         last = self.process_batch(self.last, vec_idxs, batch_size)[1:]
 
         return {'observation': observation, 'reward': reward, 'action': action, 'done': done, 
-                'fake': fake, 'last': last, 'av_action': av_action}
+                'fake': fake, 'last': last, 'av_action': av_action, 'neighbors_mask': neighbors_mask}
 
     def sample_position(self):
         valid_idx = False

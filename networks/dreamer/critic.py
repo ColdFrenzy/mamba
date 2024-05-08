@@ -25,10 +25,10 @@ class AugmentedCritic(nn.Module):
         self.embed = nn.Linear(in_dim, hidden_size)
         self.prior = build_model(in_dim, 1, 3, hidden_size, activation)
 
-    def forward(self, state_features):
+    def forward(self, state_features, mask=None):
         n_agents = state_features.shape[-2]
         batch_size = state_features.shape[:-2]
         embeds = F.relu(self.embed(state_features))
         embeds = embeds.view(-1, n_agents, embeds.shape[-1])
-        attn_embeds = F.relu(self._attention_stack(embeds).view(*batch_size, n_agents, embeds.shape[-1]))
+        attn_embeds = F.relu(self._attention_stack(embeds, mask=mask).view(*batch_size, n_agents, embeds.shape[-1]))
         return self.feedforward_model(attn_embeds)

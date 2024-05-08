@@ -41,7 +41,7 @@ class DreamerModel(nn.Module):
         return self.get_state_representation(observations, prev_actions, prev_states, mask)
 
     def get_state_representation(self, observations, prev_actions, prev_states, mask):
-        """
+        """Return the posterior RSSM state
         :param observations: size(batch, n_agents, in_dim)
         :param prev_actions: size(batch, n_agents, action_size)
         :param prev_states: size(batch, n_agents, state_size)

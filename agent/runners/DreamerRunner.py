@@ -6,7 +6,7 @@ from agent.workers.DreamerWorker import DreamerWorker
 
 class DreamerServer:
     def __init__(self, n_workers, env_config, controller_config, model):
-        ray.init()
+        ray.init(local_mode=True)
 
         self.workers = [DreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
         self.tasks = [worker.run.remote(model) for worker in self.workers]
@@ -31,15 +31,18 @@ class DreamerRunner:
     def run(self, max_steps=10 ** 10, max_episodes=10 ** 10):
         cur_steps, cur_episode = 0, 0
 
-        wandb.define_metric("steps")
-        wandb.define_metric("reward", step_metric="steps")
+        if self.learner.use_wandb:
+            wandb.define_metric("steps")
+            wandb.define_metric("reward", step_metric="steps")
 
         while True:
+            # TODO: vedere da qui come modificare gli steps per aggiungere le strategie.
             rollout, info = self.server.run()
             self.learner.step(rollout)
             cur_steps += info["steps_done"]
             cur_episode += 1
-            wandb.log({'reward': info["reward"], 'steps': cur_steps})
+            if self.learner.use_wandb:
+                wandb.log({'reward': info["reward"], 'steps': cur_steps})
 
             print(cur_episode, self.learner.total_samples, info["reward"])
             if cur_episode >= max_episodes or cur_steps >= max_steps:
