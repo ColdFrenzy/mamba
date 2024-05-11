@@ -106,7 +106,7 @@ class DreamerLearner:
         self.accum_samples = 0
         sys.stdout.flush()
 
-        for i in range(1):# range(self.config.MODEL_EPOCHS):
+        for i in range(self.config.MODEL_EPOCHS):
             # TODO: aggiungere qui selezione di strategie e policy condizionata su strategie
             samples = self.replay_buffer.sample(self.config.MODEL_BATCH_SIZE)
             self.train_model(samples)
