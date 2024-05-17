@@ -119,8 +119,6 @@ class DreamerWorker:
         while True:
             steps_done += 1
             neighbors_mask = self.env.find_neighbors()
-            if not torch.all(neighbors_mask.transpose(0, 1) == neighbors_mask):
-                print("we have a problem here")
             groups = self.create_group(neighbors_mask)
             actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
             next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])

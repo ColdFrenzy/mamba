@@ -8,10 +8,12 @@ import torch
 from agent.memory.DreamerMemory import DreamerMemory
 from agent.models.DreamerModel import DreamerModel
 from agent.optim.loss import model_loss, actor_loss, value_loss, actor_rollout
-from agent.optim.utils import advantage
+from agent.optim.utils import advantage, info_nce_loss
+from agent.utils.params import get_parameters
 from environments import Env
 from networks.dreamer.action import Actor
 from networks.dreamer.critic import AugmentedCritic
+from networks.dreamer.trajectory_synthesizer import TrajectorySynthesizerRNN, TrajectorySynthesizerAtt
 
 
 def orthogonal_init(tensor, gain=1):
@@ -55,6 +57,12 @@ class DreamerLearner:
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS).to(
             config.DEVICE)
         self.critic = AugmentedCritic(config.FEAT, config.HIDDEN).to(config.DEVICE)
+        self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
+        self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
+        if self.use_trajectory_synthesizer:
+            self.trajectory_synthesizer =  TrajectorySynthesizerRNN(config.ACTION_SIZE, config.DETERMINISTIC, config.STOCHASTIC, config.HORIZON,\
+                                                               config.TRAJECTORY_SYNTHESIZER_HIDDEN, config.TRAJECTORY_SYNTHESIZER_LAYERS).to(config.DEVICE)
+            initialize_weights(self.trajectory_synthesizer, mode='xavier')
         initialize_weights(self.model, mode='xavier')
         initialize_weights(self.actor)
         initialize_weights(self.critic, mode='xavier')
@@ -82,11 +90,14 @@ class DreamerLearner:
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.ACTOR_LR, weight_decay=0.00001)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.VALUE_LR)
+        self.trajectory_synthesizer_list = [self.trajectory_synthesizer, self.actor]
+        self.trajectory_synthesizer_optimizer = torch.optim.Adam(get_parameters(self.trajectory_synthesizer_list), lr=self.config.TRAJECTORY_SYNTHESIZER_LR)
 
     def params(self):
         return {'model': {k: v.cpu() for k, v in self.model.state_dict().items()},
                 'actor': {k: v.cpu() for k, v in self.actor.state_dict().items()},
-                'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()}}
+                'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()},
+                'trajectory_synthesizer': {k: v.cpu() for k, v in self.trajectory_synthesizer.state_dict().items()}}
 
     def step(self, rollout):
         if self.n_agents != rollout['action'].shape[-2]:
@@ -107,12 +118,10 @@ class DreamerLearner:
         sys.stdout.flush()
 
         for i in range(self.config.MODEL_EPOCHS):
-            # TODO: aggiungere qui selezione di strategie e policy condizionata su strategie
             samples = self.replay_buffer.sample(self.config.MODEL_BATCH_SIZE)
             self.train_model(samples)
 
         for i in range(self.config.EPOCHS):
-            # TODO: aggiungere qui strategy_advantage e trajectory_evaluator
             samples = self.replay_buffer.sample(self.config.BATCH_SIZE)
             self.train_agent(samples)
 
@@ -164,9 +173,33 @@ class DreamerLearner:
                 self.apply_optimizer(self.critic_optimizer, self.critic, val_loss, self.config.GRAD_CLIP_POLICY)
                 if self.config.ENV_TYPE == Env.FLATLAND and self.cur_update % self.config.TARGET_UPDATE == 0:
                     self.old_critic = deepcopy(self.critic)
+        # after updating the policy with the ppo routine, let's update the trajectory synthesizer
+        if self.use_trajectory_synthesizer:
+            actions, av_actions, old_policy, imag_feat, returns = actor_rollout(samples['observation'],
+                                                                    samples['action'],
+                                                                    samples['last'], self.model,
+                                                                    self.actor,
+                                                                    self.critic if self.config.ENV_TYPE == Env.STARCRAFT
+                                                                    else self.old_critic,
+                                                                    self.config,
+                                                                    samples['neighbors_mask'] if self.use_strategy_selector else None,
+                                                                    detach_results=False)
+            trajectories = torch.cat([imag_feat, actions], dim=-1)
+            traj_embed = []
+            for traj in range(len(trajectories)):
+                traj_embed.append(self.trajectory_synthesizer(trajectories[traj]))
+
+            traj_embed = torch.stack(traj_embed, dim=0)
+            ts_loss = info_nce_loss(traj_embed)
+            self.apply_optimizer(self.trajectory_synthesizer_optimizer, self.trajectory_synthesizer_list, ts_loss, self.config.GRAD_CLIP)
+            if self.use_wandb:
+                wandb.log({'Agent/ts_loss': ts_loss.mean()})
 
     def apply_optimizer(self, opt, model, loss, grad_clip):
         opt.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        if type(model) == list:
+            torch.nn.utils.clip_grad_norm_(get_parameters(model), grad_clip)
+        else:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         opt.step()

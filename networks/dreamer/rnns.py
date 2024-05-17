@@ -184,8 +184,6 @@ def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, 
                 action_dist = OneHotCategorical(logits=pi)
                 action = action_dist.sample()
                 av_actions.append(avail_actions.squeeze(0))
-            if neighbors_mask.size(0) != state.stoch.size(0)*8:
-                print("stop there")
             state = transition_model(action, state, neighbors_mask)
             next_states.append(state)
             policies.append(pi)

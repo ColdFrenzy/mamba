@@ -8,7 +8,7 @@ class TrajectorySynthesizerRNN(nn.Module):
     """Trajectory Synthesizer implemented through an LSTM network.
     """
     def __init__(
-        self, action_size, deter_size, stoch_size, horizon, ts_info
+        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, activation=nn.ELU, dropout=0.1, 
         ):
         super().__init__()
         self.action_size = action_size
@@ -19,10 +19,10 @@ class TrajectorySynthesizerRNN(nn.Module):
         self.embedding_size = deter_size + stoch_size + action_size
         # As in the transformer we keep the same dimension as output
         self.output_size = self.embedding_size
-        self.act_fn = ts_info["activation"]
-        self.dropout = ts_info["dropout"]
-        self.n_layers = ts_info["num_layers"]
-        self.hidden = ts_info["node_size"]
+        self.act_fn = activation
+        self.dropout = dropout
+        self.n_layers = num_layers
+        self.hidden = hidden_size
 
         self.model = self._build_model()
 
@@ -35,7 +35,8 @@ class TrajectorySynthesizerRNN(nn.Module):
 
     def forward(self, model_state):
         """        
-        :params model_state: tensor of shape (horizon, seq_len*batch_size, deter_size + stoch_size + action_size)
+        LSTM expects input of shape (seq_len, batch_size, input_size) and outputs a tuple (seq_len, batch_size, hidden_size)
+        :params model_state: tensor of shape (horizon, seq_len*batch_size, num_agents, deter_size + stoch_size + action_size)
         :return output: tensor of shape (seq_len*batch_size, deter_size + stoch_size + action_size)
         """
         output, (h_n, c_n) = self.model[0](model_state)
@@ -48,18 +49,18 @@ class TrajectorySynthesizerAtt(nn.Module):
     """Trajectory Synthesizer implemented through a Transformer network.
     """
     def __init__(
-        self, action_size, deter_size, stoch_size, horizon, ts_info
+        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, n_heads = 8, activation=nn.ELU, dropout=0.1, 
         ):
         super().__init__()
         self.action_size = action_size
         self.deter_size = deter_size
         self.stoch_size = stoch_size
         self.horizon = horizon
-        self.act_fn = ts_info["activation"]
-        self.dropout = ts_info["dropout"]
-        self.n_layers = ts_info["num_layers"]
-        self.hidden = ts_info["node_size"]
-        self.n_heads = ts_info["n_heads"]
+        self.act_fn = activation
+        self.dropout = dropout
+        self.n_layers = num_layers
+        self.hidden =  hidden_size
+        self.n_heads = n_heads
         self.embedding_size = deter_size + stoch_size + action_size
 
         self.pos_enc  = PositionalEncoding(self.horizon, self.embedding_size)

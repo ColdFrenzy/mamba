@@ -17,10 +17,6 @@ def parse_args():
     parser.add_argument('--env', type=str, default="flatland", help='Flatland or SMAC env')
     parser.add_argument('--env_name', type=str, default="5_agents", help='Specific setting')
     parser.add_argument('--n_workers', type=int, default=1, help='Number of workers')
-    parser.add_argument("--use_strategy_selector", action="store_true", help="use strategy selector", default=False)
-    parser.add_argument("--use_trajectory_synthesizer", action="store_true", help="use trajectory synthesizer", default=False)
-    parser.add_argument("--use_strategy_advantage", action="store_true", help="use strategy advantage", default=False)
-    parser.add_argument("--test_config", action="store_true", help="test config", default=False)
     return parser.parse_args()
 
 
@@ -91,7 +87,7 @@ if __name__ == "__main__":
     configs["learner_config"].ENV_TYPE = Env(args.env)
     configs["controller_config"].ENV_TYPE = Env(args.env)
 
-    exp = Experiment(steps=10 ** 10,
+    exp = Experiment(steps=10 ** 6,
                      episodes=50000,
                      random_seed=RANDOM_SEED,
                      env_config=EnvCurriculumConfig(*zip(configs["env_config"]), Env(args.env),

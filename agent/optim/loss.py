@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.distributions as td
 
 from agent.optim.utils import rec_loss, compute_return, state_divergence_loss, calculate_ppo_loss, \
-    batch_multi_agent, log_prob_loss, info_loss
+    batch_multi_agent, log_prob_loss, info_loss, batch_strat_horizon
 from agent.controllers.DreamerController import encode_strategy
 from agent.utils.params import FreezeParameters
 from networks.dreamer.rnns import rollout_representation, rollout_policy, rollout_policy_with_strategies
@@ -45,7 +45,7 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     # av_action_loss is the loss for the available actions
     model_loss = div + reward_loss + dis_loss + reconstruction_loss + pcont_loss + av_action_loss
     if config.USE_WANDB and np.random.randint(20) == 4:
-        with torch.no_grad:
+        with torch.no_grad():
             shape = prior.logits.shape
             prior_logits = torch.reshape(prior.logits, shape = (*shape[:-1], 32, 32))
             temp_prior = td.Independent(td.OneHotCategorical(logits=prior_logits), 1)
@@ -59,7 +59,7 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     return model_loss
 
 
-def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None):
+def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True):
     n_agents = obs.shape[2]
     with FreezeParameters([model]):
         embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [760, 3, 256]
@@ -83,9 +83,15 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
                              items["imag_states"].map(lambda x: x.reshape(-1, n_agents, x.shape[-1])), config)
 
     if config.USE_STRATEGY_SELECTOR:
-        output = [items["actions"][:, :-1].detach(),
-                items["av_actions"][:, :-1].detach() if items["av_actions"] is not None else None,
-                items["old_policy"][:, :-1].detach(), imag_feat[:, :-1].detach(), returns.detach()]
+        if detach_results:
+            output = [items["actions"][:, :-1].detach(),
+                    items["av_actions"][:, :-1].detach() if items["av_actions"] is not None else None,
+                    items["old_policy"][:, :-1].detach(), imag_feat[:, :-1].detach(), returns.detach()]
+        else:
+            output = [items["actions"][:, :-1],
+                    items["av_actions"][:, :-1] if items["av_actions"] is not None else None,
+                    items["old_policy"][:, :-1], imag_feat[:, :-1], returns]    
+            return [batch_strat_horizon(v) for v in output]     
     else:
         output = [items["actions"][:-1].detach(),
             items["av_actions"][:-1].detach() if items["av_actions"] is not None else None,

@@ -20,7 +20,7 @@ class StarCraft:
         return self.to_dict(self.env.get_obs()), {i: reward for i in range(self.n_agents)}, \
                {i: done for i in range(self.n_agents)}, info
 
-    def find_neighbors(self, max_distance=3):
+    def find_neighbors(self, max_distance=10**10):
         """Find neighbors based on their distances
         :param max_distance: maximum distance between agents
         :return neighbors_mask: torch.Tensor(n_agents, n_agents) tensor of 0s and 1s

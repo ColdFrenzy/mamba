@@ -8,6 +8,7 @@ class DreamerLearnerConfig(DreamerConfig):
         self.MODEL_LR = 2e-4
         self.ACTOR_LR = 5e-4
         self.VALUE_LR = 5e-4
+        self.TRAJECTORY_SYNTHESIZER_LR = 4e-4
         self.CAPACITY = 100000 if self.USE_TEST_CONFIG else 250000
         self.MIN_BUFFER_SIZE = 100 if self.USE_TEST_CONFIG else 500
         self.MODEL_EPOCHS = 2 if self.USE_TEST_CONFIG else 60

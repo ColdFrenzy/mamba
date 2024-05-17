@@ -13,8 +13,8 @@ class DreamerConfig(Config):
     def __init__(self):
         super().__init__()
         self.USE_TEST_CONFIG = True # use a small config for testing
-        self.USE_TRAJECTORY_SYNTHESIZER = False
-        self.USE_STRATEGY_ADVANTAGE = False
+        self.USE_TRAJECTORY_SYNTHESIZER = True
+        self.USE_STRATEGY_ADVANTAGE = True
         self.USE_WANDB = False
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
         self.USE_STRATEGY_SELECTOR = True
@@ -29,6 +29,9 @@ class DreamerConfig(Config):
         self.FEAT = self.STOCHASTIC + self.DETERMINISTIC
         self.ACTOR_FEAT = self.FEAT + (self.N_STRATEGIES-1) if self.USE_STRATEGY_SELECTOR else self.FEAT
         self.GLOBAL_FEAT = self.FEAT + self.EMBED
+        self.TRAJECTORY_SYNTHESIZER_LAYERS = 4
+        self.TRAJECTORY_SYNTHESIZER_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
+        self.TRAJECTORY_SYNTHESIZER_HEADS = 1 if self.USE_TEST_CONFIG else 8 # if using transformer
         self.VALUE_LAYERS = 2
         self.VALUE_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.PCONT_LAYERS = 2
