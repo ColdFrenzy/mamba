@@ -25,6 +25,7 @@ class DreamerLearnerConfig(DreamerConfig):
         self.ENTROPY = 0.001
         self.ENTROPY_ANNEALING = 0.99998
         self.GRAD_CLIP_POLICY = 100.0
+        self.TRAJECTORY_SYNTHESIZER_SCALE = 0.1
 
     def create_learner(self):
         return DreamerLearner(self)

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 from agent.memory.DreamerMemory import DreamerMemory
 from agent.models.DreamerModel import DreamerModel
@@ -47,6 +48,26 @@ def initialize_weights(mod, scale=1.0, mode='ortho'):
             if len(p.data.shape) >= 2:
                 torch.nn.init.xavier_uniform_(p.data)
 
+def generate_trajectory_scatterplot(embed_traj):
+    """
+    Given multiple trajectories generated from different strategies and embedded in a lower dimensional space, this function returns 
+    an image that represents their distribution in a 2D space (by picking the first two features).
+    alternatively we could use t-distributed stochastic neighbor embedding (t-SNE)
+    :params embed_traj: [num_strategies, embed_dim] 
+    :return traj_img: pyplot image
+    """
+    reduced_embed_traj = embed_traj[:,:,:2].detach().clone().cpu()
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for i in range(reduced_embed_traj.shape[0]):
+        ax.scatter(reduced_embed_traj[i, :, 0], reduced_embed_traj[i, :, 1], label=f'Strategy {i}')
+    plt.title('Trajectories scatterplot in 2D Space')
+    plt.legend()
+
+    # gcf gets the current figure
+    traj_img = plt.gcf()
+
+    return traj_img
+
 
 class DreamerLearner:
     # learner has both the actor and critic since it needs to optimize the policy gradient objective
@@ -73,6 +94,7 @@ class DreamerLearner:
         self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
         self.use_strategy_advantage = config.USE_STRATEGY_ADVANTAGE
         self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
+        self.trajectory_synthesizer_scale = config.TRAJECTORY_SYNTHESIZER_SCALE
         self.use_wandb = config.USE_WANDB
         self.step_count = -1
         self.cur_update = 1
@@ -90,14 +112,20 @@ class DreamerLearner:
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.ACTOR_LR, weight_decay=0.00001)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.VALUE_LR)
-        self.trajectory_synthesizer_list = [self.trajectory_synthesizer, self.actor]
-        self.trajectory_synthesizer_optimizer = torch.optim.Adam(get_parameters(self.trajectory_synthesizer_list), lr=self.config.TRAJECTORY_SYNTHESIZER_LR)
+        if self.use_trajectory_synthesizer:
+            self.trajectory_synthesizer_list = [self.trajectory_synthesizer, self.actor]
+            self.trajectory_synthesizer_optimizer = torch.optim.Adam(get_parameters(self.trajectory_synthesizer_list), lr=self.config.TRAJECTORY_SYNTHESIZER_LR)
 
     def params(self):
-        return {'model': {k: v.cpu() for k, v in self.model.state_dict().items()},
-                'actor': {k: v.cpu() for k, v in self.actor.state_dict().items()},
-                'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()},
-                'trajectory_synthesizer': {k: v.cpu() for k, v in self.trajectory_synthesizer.state_dict().items()}}
+        if self.use_trajectory_synthesizer:
+            return {'model': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                    'actor': {k: v.cpu() for k, v in self.actor.state_dict().items()},
+                    'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()},
+                    'trajectory_synthesizer': {k: v.cpu() for k, v in self.trajectory_synthesizer.state_dict().items()}}
+        else:
+            return {'model': {k: v.cpu() for k, v in self.model.state_dict().items()},
+                    'actor': {k: v.cpu() for k, v in self.actor.state_dict().items()},
+                    'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()}}
 
     def step(self, rollout):
         if self.n_agents != rollout['action'].shape[-2]:
@@ -190,7 +218,10 @@ class DreamerLearner:
                 traj_embed.append(self.trajectory_synthesizer(trajectories[traj]))
 
             traj_embed = torch.stack(traj_embed, dim=0)
-            ts_loss = info_nce_loss(traj_embed)
+            traj_embed_fig = generate_trajectory_scatterplot(traj_embed)
+            if self.use_wandb: # and np.random.randint(20) == 9:
+                wandb.log({'Plots/Trajectory_Embeddings': wandb.Image(traj_embed_fig)})
+            ts_loss = info_nce_loss(traj_embed) * self.trajectory_synthesizer_scale
             self.apply_optimizer(self.trajectory_synthesizer_optimizer, self.trajectory_synthesizer_list, ts_loss, self.config.GRAD_CLIP)
             if self.use_wandb:
                 wandb.log({'Agent/ts_loss': ts_loss.mean()})

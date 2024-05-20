@@ -47,9 +47,9 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     if config.USE_WANDB and np.random.randint(20) == 4:
         with torch.no_grad():
             shape = prior.logits.shape
-            prior_logits = torch.reshape(prior.logits, shape = (*shape[:-1], 32, 32))
+            prior_logits = torch.reshape(prior.logits, shape = (*shape[:-1], config.N_CATEGORICALS, config.N_CLASSES))
             temp_prior = td.Independent(td.OneHotCategorical(logits=prior_logits), 1)
-            post_logits = torch.reshape(post.logits, shape = (*shape[:-1], 32, 32))
+            post_logits = torch.reshape(post.logits, shape = (*shape[:-1], config.N_CATEGORICALS, config.N_CLASSES))
             temp_post = td.Independent(td.OneHotCategorical(logits=post_logits), 1)
 
         wandb.log({'Model/reward_loss': reward_loss, 'Model/div': div, 'Model/av_action_loss': av_action_loss,
@@ -68,8 +68,8 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
         prior, post, _ = rollout_representation(model.representation, obs.shape[0], embed, action,   
                                                 prev_state, last)                           # stoch [18, 40, 3, 1024]
         post = post.map(lambda x: x.reshape((obs.shape[0] - 1) * obs.shape[1], n_agents, -1)) # stoch [720, 3, 1024]
-        nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
         if config.USE_STRATEGY_SELECTOR:
+            nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
             nn_mask = nn_mask.repeat(8,1,1).detach()
             items = rollout_policy_with_strategies(model.transition, nn_mask, model.av_action, config.HORIZON, actor, post, config.N_STRATEGIES)
         else:
