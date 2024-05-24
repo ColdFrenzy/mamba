@@ -178,7 +178,7 @@ class DreamerLearner:
             strategy_advantage = torch.stack(strategy_advantage, dim = 0)
         adv = returns.detach() - self.critic(imag_feat).detach()
         if self.config.ENV_TYPE == Env.STARCRAFT:
-            adv = advantage(adv)
+            adv = advantage(adv, self.use_strategy_selector)
         if self.use_wandb:
             wandb.log({'Agent/Returns': returns.mean()})
         for epoch in range(self.config.PPO_EPOCHS):
@@ -203,6 +203,7 @@ class DreamerLearner:
                     self.old_critic = deepcopy(self.critic)
         # after updating the policy with the ppo routine, let's update the trajectory synthesizer
         if self.use_trajectory_synthesizer:
+            # only old_policy requires grad
             actions, av_actions, old_policy, imag_feat, returns = actor_rollout(samples['observation'],
                                                                     samples['action'],
                                                                     samples['last'], self.model,
@@ -219,7 +220,7 @@ class DreamerLearner:
 
             traj_embed = torch.stack(traj_embed, dim=0)
             traj_embed_fig = generate_trajectory_scatterplot(traj_embed)
-            if self.use_wandb: # and np.random.randint(20) == 9:
+            if self.use_wandb and np.random.randint(100) == 9:
                 wandb.log({'Plots/Trajectory_Embeddings': wandb.Image(traj_embed_fig)})
             ts_loss = info_nce_loss(traj_embed) * self.trajectory_synthesizer_scale
             self.apply_optimizer(self.trajectory_synthesizer_optimizer, self.trajectory_synthesizer_list, ts_loss, self.config.GRAD_CLIP)

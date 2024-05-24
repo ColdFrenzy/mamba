@@ -15,8 +15,10 @@ class Actor(nn.Module):
     def forward(self, state_features):
         x = self.feedforward_model(state_features)
         action_dist = OneHotCategorical(logits=x)
-        action = action_dist.sample()
-        return action, x
+        one_hot = action_dist.sample()
+        # To return action as differentiable, let's apply straight-through estimator
+        # action = action + action_dist.probs - action_dist.probs.detach()
+        return one_hot, x
 
 
 class AttentionActor(nn.Module):

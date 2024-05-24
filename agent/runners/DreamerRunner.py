@@ -12,6 +12,9 @@ class DreamerServer:
         self.tasks = [worker.run.remote(model) for worker in self.workers]
 
     def append(self, idx, update):
+        """
+        :param idx: worker index, 
+        :param update: model weights used to update the workers"""
         self.tasks.append(self.workers[idx].run.remote(update))
 
     def run(self):

@@ -24,11 +24,21 @@ def entropy_loss(prob, logProb):
     return (prob * logProb).sum(-1)
 
 
-def advantage(A):
-    std = 1e-4 + A.std() if len(A) > 0 else 1
-    adv = (A - A.mean()) / std
-    adv = adv.detach()
-    adv[adv != adv] = 0
+def advantage(A, use_strategies=False):
+    if use_strategies:
+        strat_adv = []
+        for a in A:
+            std = 1e-4 + a.std() if len(a) > 0 else 1
+            adv = (a - a.mean()) / std
+            adv = adv.detach()
+            adv[adv != adv] = 0
+            strat_adv.append(adv)
+        return torch.stack(strat_adv, dim=0)
+    else:
+        std = 1e-4 + A.std() if len(A) > 0 else 1
+        adv = (A - A.mean()) / std
+        adv = adv.detach()
+        adv[adv != adv] = 0
     return adv
 
 

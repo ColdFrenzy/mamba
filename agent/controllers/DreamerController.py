@@ -96,7 +96,7 @@ class DreamerController:
         """ 
         This function selects a strategy for each group
         :args groups_mask: torch.Tensor(n_groups, n_agents) n_group is variable 
-        :args neighbors_mask: torch.Tensor(n_agents, n_agents)
+        :args neighbors_mask: torch.Tensor(n_heads, n_agents, n_agents)
         :args model: DreamerModel model
         :args actor: Actor model
         :args critic: Critic model
@@ -106,7 +106,11 @@ class DreamerController:
         for group in group_mask:
             # strategies_last_state shape (n_strategies, n_agents, stoch + deter)
             items = rollout_policy_with_strategies(model.transition, neighbors_mask, model.av_action, self.strategy_duration, actor, prev_rnn_state, self.n_strategies)
+            #############################################################################################
+            # WE CAN TRY BY USING ONLY THE VALUE OF THE LAST STATE OR A VALUE AVERAGE OVER TRAJECTORIES #
+            #############################################################################################
             strategies_last_state = items["imag_states"].get_features()[:,-1].squeeze()
+
             # strategy_distr shape (n_strategies, n_agents, 1). It has the probability of each strategy for each agent on the first dimension
             softmax_mask = neighbors_mask.repeat(self.n_strategies, 1, 1)
             strategies_distr = torch.nn.Softmax(dim=0)(critic(strategies_last_state, softmax_mask)).squeeze(-1)

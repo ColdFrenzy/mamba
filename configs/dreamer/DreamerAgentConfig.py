@@ -12,12 +12,13 @@ RSSM_STATE_MODE = 'discrete'
 class DreamerConfig(Config):
     def __init__(self):
         super().__init__()
-        self.USE_TEST_CONFIG = False # use a small config for testing
-        self.USE_TRAJECTORY_SYNTHESIZER = False
+        self.USE_TEST_CONFIG = True # use a small config for testing
+        self.USE_TRAJECTORY_SYNTHESIZER = True
+        self.USE_COMMUNICATION = True # learn communication and use it also in the imagination
         self.USE_STRATEGY_ADVANTAGE = False
-        self.USE_WANDB = True
+        self.USE_WANDB = False
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
-        self.USE_STRATEGY_SELECTOR = False
+        self.USE_STRATEGY_SELECTOR = True
         self.N_STRATEGIES = 2 if self.USE_TEST_CONFIG else 4
         self.HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.MODEL_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
