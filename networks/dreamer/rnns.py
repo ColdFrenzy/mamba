@@ -171,7 +171,7 @@ def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, 
     av_actions, av_actions_with_strategies = [], []
     policies, policies_with_strategies = [], []
     for strategy in range(n_strategies):
-        strategy_encoded = torch.zeros(*state.stoch.shape[:-1], n_strategies-1, device=state.stoch.device)
+        strategy_encoded = torch.zeros(*state.stoch.shape[:-1], n_strategies-1, device=state.stoch.device) if n_strategies > 1 else torch.zeros(*state.stoch.shape[:-1], 1, device=state.stoch.device)
         if strategy > 0:
             strategy_encoded[:,:,strategy-1] = 1
         for t in range(steps):

@@ -13,13 +13,13 @@ class DreamerConfig(Config):
     def __init__(self):
         super().__init__()
         self.USE_TEST_CONFIG = True # use a small config for testing
-        self.USE_TRAJECTORY_SYNTHESIZER = True
+        self.USE_TRAJECTORY_SYNTHESIZER = False
         self.USE_COMMUNICATION = True # learn communication and use it also in the imagination
         self.USE_STRATEGY_ADVANTAGE = False
         self.USE_WANDB = False
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
         self.USE_STRATEGY_SELECTOR = True
-        self.N_STRATEGIES = 2 if self.USE_TEST_CONFIG else 4
+        self.N_STRATEGIES = 1 if self.USE_TEST_CONFIG else 4
         self.HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.MODEL_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.EMBED = 64 if self.USE_TEST_CONFIG else 256
@@ -28,7 +28,10 @@ class DreamerConfig(Config):
         self.STOCHASTIC = self.N_CATEGORICALS * self.N_CLASSES
         self.DETERMINISTIC = 64 if self.USE_TEST_CONFIG else 256
         self.FEAT = self.STOCHASTIC + self.DETERMINISTIC
-        self.ACTOR_FEAT = self.FEAT + (self.N_STRATEGIES-1) if self.USE_STRATEGY_SELECTOR else self.FEAT
+        if self.USE_STRATEGY_SELECTOR:
+            self.ACTOR_FEAT = self.FEAT + (self.N_STRATEGIES-1) if self.N_STRATEGIES > 1 else self.FEAT + 1
+        else:
+            self.ACTOR_FEAT = self.FEAT
         self.GLOBAL_FEAT = self.FEAT + self.EMBED
         self.TRAJECTORY_SYNTHESIZER_LAYERS = 4
         self.TRAJECTORY_SYNTHESIZER_HIDDEN = 64 if self.USE_TEST_CONFIG else 256

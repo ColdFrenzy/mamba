@@ -147,7 +147,7 @@ def actor_loss(imag_states, actions, av_actions, old_policy, advantage, actor, e
     if config.USE_STRATEGY_SELECTOR:
         imag_states_plus_strategy = []
         for i in range(len(imag_states)):
-            encoded_strategy = torch.zeros_like(imag_states[i][:, :, : config.N_STRATEGIES-1])
+            encoded_strategy = torch.zeros(imag_states[i][:2], config.N_STRATEGIES-1) if config.N_STRATEGIES > 1 else torch.zeros(*imag_states[i].shape[:2], 1)
             if i > 0:
                 encoded_strategy[:, :, i-1] = 1
             imag_states_plus_strategy.append(torch.cat([imag_states[i], encoded_strategy], dim=-1))

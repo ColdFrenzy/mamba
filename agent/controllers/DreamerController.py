@@ -109,7 +109,8 @@ class DreamerController:
             #############################################################################################
             # WE CAN TRY BY USING ONLY THE VALUE OF THE LAST STATE OR A VALUE AVERAGE OVER TRAJECTORIES #
             #############################################################################################
-            strategies_last_state = items["imag_states"].get_features()[:,-1].squeeze()
+            # items["imag_states"] shape (n_strategies, horizon, batch_size, n_agents, stoch + deter)
+            strategies_last_state = items["imag_states"].get_features()[:,-1].squeeze(1) # [n_strategies, n_agents, stoch + deter]
 
             # strategy_distr shape (n_strategies, n_agents, 1). It has the probability of each strategy for each agent on the first dimension
             softmax_mask = neighbors_mask.repeat(self.n_strategies, 1, 1)
@@ -144,7 +145,7 @@ def encode_strategy(strategy, n_strategies):
     :return: torch.Tensor(n_agents, n_strategies-1)
     """
 
-    strategy_encoded = torch.zeros(strategy.size(0), n_strategies-1)
+    strategy_encoded = torch.zeros(strategy.size(0), n_strategies-1) if n_strategies > 1 else torch.zeros(strategy.size(0), 1)
     for i in range(strategy.size(0)):
         strategy_encoded[i, strategy[i]-1] = 1
     return strategy_encoded
