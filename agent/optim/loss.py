@@ -62,8 +62,8 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
 def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True):
     n_agents = obs.shape[2]
     with FreezeParameters([model]):
-        embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [760, 3, 256]
-        embed = embed.reshape(obs.shape[0], obs.shape[1], n_agents, -1)                     # [19, 40 , 3, 256]
+        embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [batch*(seq_len-1), n_agents, feat] [760, 3, 256]
+        embed = embed.reshape(obs.shape[0], obs.shape[1], n_agents, -1)                     # [batch, seq_len-1, n_agents, feat] [19, 40 , 3, 256]
         prev_state = model.representation.initial_state(obs.shape[1], obs.shape[2], device=obs.device)
         prior, post, _ = rollout_representation(model.representation, obs.shape[0], embed, action,   
                                                 prev_state, last)                           # stoch [18, 40, 3, 1024]
@@ -73,7 +73,9 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
             nn_mask = nn_mask.repeat(8,1,1).detach()
             items = rollout_policy_with_strategies(model.transition, nn_mask, model.av_action, config.HORIZON, actor, post, config.N_STRATEGIES)
         else:
-            items = rollout_policy(model.transition, model.av_action, config.HORIZON, actor, post)
+            nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
+            nn_mask = nn_mask.repeat(8,1,1).detach()
+            items = rollout_policy(model.transition, model.av_action, config.HORIZON, actor, post, neighbors_mask=nn_mask)
     imag_feat = items["imag_states"].get_features() # [n_strategies, horizon, seq_len*batch_size, stoch_t, deter_t]
     if config.USE_STRATEGY_SELECTOR:
         imag_rew_feat = torch.cat([items["imag_states"].stoch[:,:-1], items["imag_states"].deter[:, 1:]], -1) # [stoch_t, deter_t+1]
@@ -147,7 +149,7 @@ def actor_loss(imag_states, actions, av_actions, old_policy, advantage, actor, e
     if config.USE_STRATEGY_SELECTOR:
         imag_states_plus_strategy = []
         for i in range(len(imag_states)):
-            encoded_strategy = torch.zeros(imag_states[i][:2], config.N_STRATEGIES-1) if config.N_STRATEGIES > 1 else torch.zeros(*imag_states[i].shape[:2], 1)
+            encoded_strategy = torch.zeros(imag_states[i][:2], config.N_STRATEGIES-1, device=imag_states[i].device) if config.N_STRATEGIES > 1 else torch.zeros(*imag_states[i].shape[:2], 1, device=imag_states[i].device)
             if i > 0:
                 encoded_strategy[:, :, i-1] = 1
             imag_states_plus_strategy.append(torch.cat([imag_states[i], encoded_strategy], dim=-1))

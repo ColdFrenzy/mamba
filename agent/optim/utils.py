@@ -51,6 +51,7 @@ def calculate_ppo_loss(logits, rho, A):
 
 
 def batch_multi_agent(tensor, n_agents, use_strategies=False):
+    """return tensor of shape (batch*seq_len*horizon, n_agents, features) or (n_strategies, batch*seq_len*horizon, n_agents, features)"""
     if use_strategies:
         return tensor.reshape(tensor.shape[0], -1, n_agents, tensor.shape[-1]) if tensor is not None else None
     else:

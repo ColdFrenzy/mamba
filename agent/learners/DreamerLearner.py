@@ -91,9 +91,7 @@ class DreamerLearner:
         self.replay_buffer = DreamerMemory(config.CAPACITY, config.SEQ_LENGTH, config.ACTION_SIZE, config.IN_DIM, 2,
                                            config.DEVICE, config.ENV_TYPE)
         self.entropy = config.ENTROPY
-        self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
         self.use_strategy_advantage = config.USE_STRATEGY_ADVANTAGE
-        self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
         self.trajectory_synthesizer_scale = config.TRAJECTORY_SYNTHESIZER_SCALE
         self.use_wandb = config.USE_WANDB
         self.step_count = -1
@@ -169,14 +167,15 @@ class DreamerLearner:
                                                                             self.critic if self.config.ENV_TYPE == Env.STARCRAFT
                                                                             else self.old_critic,
                                                                             self.config,
-                                                                            samples['neighbors_mask'] if self.use_strategy_selector else None)
+                                                                            samples['neighbors_mask'])
         if self.use_strategy_advantage:
             strategy_advantage = []
             mean_strategy_value = torch.mean(returns.detach(), dim=0)
             for strat in imag_feat:
                 strategy_advantage.append(mean_strategy_value - self.critic(strat).detach())
-            strategy_advantage = torch.stack(strategy_advantage, dim = 0)
-        adv = returns.detach() - self.critic(imag_feat).detach()
+            adv = torch.stack(strategy_advantage, dim = 0)
+        else:
+            adv = returns.detach() - self.critic(imag_feat).detach()
         if self.config.ENV_TYPE == Env.STARCRAFT:
             adv = advantage(adv, self.use_strategy_selector)
         if self.use_wandb:
@@ -211,7 +210,7 @@ class DreamerLearner:
                                                                     self.critic if self.config.ENV_TYPE == Env.STARCRAFT
                                                                     else self.old_critic,
                                                                     self.config,
-                                                                    samples['neighbors_mask'] if self.use_strategy_selector else None,
+                                                                    samples['neighbors_mask'],
                                                                     detach_results=False)
             trajectories = torch.cat([imag_feat, actions], dim=-1)
             traj_embed = []

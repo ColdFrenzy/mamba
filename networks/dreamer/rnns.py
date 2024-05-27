@@ -119,7 +119,7 @@ def rollout_representation(representation_model, steps, obs_embed, action, prev_
     return prior.map(lambda x: x[:-1]), post.map(lambda x: x[:-1]), post.deter[1:]
 
 # IMAGINED ROLLOUT. Given the transition model and the policy return an imagined rollout 
-def rollout_policy(transition_model, av_action, steps, policy, prev_state):
+def rollout_policy(transition_model, av_action, steps, policy, prev_state, neighbors_mask=None):
     """
         Roll out the model with a policy function.
         :param steps: number of steps to roll out
@@ -147,7 +147,7 @@ def rollout_policy(transition_model, av_action, steps, policy, prev_state):
         actions.append(action)
         # In policy rollout the attention is always present, this means that the agent need to predict the next stoch state 
         # and action of each agent. Not really scalable.
-        state = transition_model(action, state)
+        state = transition_model(action, state, neighbors_mask)
     return {"imag_states": stack_states(next_states, dim=0),
             "actions": torch.stack(actions, dim=0),
             "av_actions": torch.stack(av_actions, dim=0) if len(av_actions) > 0 else None,
@@ -165,12 +165,12 @@ def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, 
     :param n_strategies: int, number of strategies
     :return: next state, size(n_strategies, time_steps, batch_size, num_agents, stoch+deter)
     """
-    state = prev_state
     next_states, next_states_with_strategies = [], []
     actions, actions_with_strategies = [], []
     av_actions, av_actions_with_strategies = [], []
     policies, policies_with_strategies = [], []
     for strategy in range(n_strategies):
+        state = prev_state
         strategy_encoded = torch.zeros(*state.stoch.shape[:-1], n_strategies-1, device=state.stoch.device) if n_strategies > 1 else torch.zeros(*state.stoch.shape[:-1], 1, device=state.stoch.device)
         if strategy > 0:
             strategy_encoded[:,:,strategy-1] = 1
@@ -184,10 +184,10 @@ def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, 
                 action_dist = OneHotCategorical(logits=pi)
                 action = action_dist.sample()
                 av_actions.append(avail_actions.squeeze(0))
-            state = transition_model(action, state, neighbors_mask)
             next_states.append(state)
             policies.append(pi)
             actions.append(action)
+            state = transition_model(action, state, neighbors_mask)
         next_states_with_strategies.append(stack_states(next_states, dim=0))
         actions_with_strategies.append(torch.stack(actions, dim=0))
         policies_with_strategies.append(torch.stack(policies, dim=0))  
