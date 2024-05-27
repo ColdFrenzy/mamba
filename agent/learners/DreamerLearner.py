@@ -181,7 +181,7 @@ class DreamerLearner:
         if self.use_wandb:
             wandb.log({'Agent/Returns': returns.mean()})
         for epoch in range(self.config.PPO_EPOCHS):
-            inds = np.random.permutation(actions.shape[0])
+            inds = np.random.permutation(actions.shape[1]) if self.use_strategy_selector else np.random.permutation(actions.shape[0])
             step = 2000
             for i in range(0, len(inds), step):
                 self.cur_update += 1
@@ -194,7 +194,10 @@ class DreamerLearner:
                                     old_policy[idx], adv[idx], self.actor, self.entropy, self.config)
                 self.apply_optimizer(self.actor_optimizer, self.actor, loss, self.config.GRAD_CLIP_POLICY)
                 self.entropy *= self.config.ENTROPY_ANNEALING
-                val_loss = value_loss(self.critic, imag_feat[idx], returns[idx])
+                if self.use_strategy_selector:
+                    val_loss = value_loss(self.critic, imag_feat[:, idx], returns[:, idx])
+                else:
+                    val_loss = value_loss(self.critic, imag_feat[idx], returns[idx])
                 if self.use_wandb and np.random.randint(20) == 9:
                     wandb.log({'Agent/val_loss': val_loss, 'Agent/actor_loss': loss})
                 self.apply_optimizer(self.critic_optimizer, self.critic, val_loss, self.config.GRAD_CLIP_POLICY)

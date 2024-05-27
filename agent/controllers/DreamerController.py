@@ -64,6 +64,7 @@ class DreamerController:
         to CPU, for the sampler.  Advances the recurrent state of the agent.
         (no grad)
         """
+        # steps done reset at every episode
         if self.use_strategy_selector:
             if steps_done == 1 or steps_done % self.strategy_duration == 0:
                 if self.prev_actions is None:
