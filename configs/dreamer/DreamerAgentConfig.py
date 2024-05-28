@@ -14,12 +14,12 @@ class DreamerConfig(Config):
         super().__init__()
         self.USE_TEST_CONFIG = True # use a small config for testing
         self.USE_TRAJECTORY_SYNTHESIZER = False
-        self.USE_COMMUNICATION = True # learn communication and use it also in the imagination
+        self.USE_COMMUNICATION = False # learn communication and use it also in the imagination
         self.USE_STRATEGY_ADVANTAGE = False
         self.USE_WANDB = False
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
         self.USE_STRATEGY_SELECTOR = True
-        self.N_STRATEGIES = 1 if self.USE_TEST_CONFIG else 4
+        self.N_STRATEGIES = 2 if self.USE_TEST_CONFIG else 4
         self.HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.MODEL_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.EMBED = 64 if self.USE_TEST_CONFIG else 256

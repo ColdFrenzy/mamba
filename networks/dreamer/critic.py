@@ -13,7 +13,8 @@ class Critic(nn.Module):
         self.activation = activation
         self.feedforward_model = build_model(in_dim, 1, layers, hidden_size, activation)
 
-    def forward(self, state_features):
+    def forward(self, state_features, mask=None):
+        """mask is used only for compatibility with the augmented critic but it is not used in this model"""
         return self.feedforward_model(state_features)
 
 

@@ -40,12 +40,14 @@ class DiscreteLatentDist(nn.Module):
 class RSSMTransition(nn.Module):
     def __init__(self, config, hidden_size=200, activation=nn.ReLU):
         super().__init__()
+        self._use_communication = config.USE_COMMUNICATION
         self._stoch_size = config.STOCHASTIC
         self._deter_size = config.DETERMINISTIC
         self._hidden_size = hidden_size
         self._activation = activation
         self._cell = nn.GRU(hidden_size, self._deter_size)
-        self._attention_stack = AttentionEncoder(3, hidden_size, hidden_size, dropout=0.1)
+        if self._use_communication:
+            self._attention_stack = AttentionEncoder(3, hidden_size, hidden_size, dropout=0.1)
         self._rnn_input_model = self._build_rnn_input_model(config.ACTION_SIZE + self._stoch_size)
         self._stochastic_prior_model = DiscreteLatentDist(self._deter_size, config.N_CATEGORICALS, config.N_CLASSES,
                                                           self._hidden_size)
@@ -60,7 +62,10 @@ class RSSMTransition(nn.Module):
         batch_size = prev_actions.shape[0]
         n_agents = prev_actions.shape[1]
         stoch_input = self._rnn_input_model(torch.cat([prev_actions, prev_states.stoch], dim=-1))  #  actions [40, 3, 9] and stoch [40, 3, 1024]. Out [40, 3, 256]
-        attn = self._attention_stack(stoch_input, mask=mask)                                       # attn [40, 3, 256]
+        if self._use_communication:
+            attn = self._attention_stack(stoch_input, mask=mask)                                       # attn [40, 3, 256]
+        else:
+            attn = stoch_input
         deter_state = self._cell(attn.reshape(1, batch_size * n_agents, -1), # attn reshaed [1, 120, 256] reshaped like that because GRU accept input as [seq_len, batch, input_size]
                                  prev_states.deter.reshape(1, batch_size * n_agents, -1))[0].reshape(batch_size, n_agents, -1) # prev_states reshaped [1, 120, 256]
         logits, stoch_state = self._stochastic_prior_model(deter_state)

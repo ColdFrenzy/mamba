@@ -13,7 +13,7 @@ from agent.optim.utils import advantage, info_nce_loss
 from agent.utils.params import get_parameters
 from environments import Env
 from networks.dreamer.action import Actor
-from networks.dreamer.critic import AugmentedCritic
+from networks.dreamer.critic import AugmentedCritic, Critic
 from networks.dreamer.trajectory_synthesizer import TrajectorySynthesizerRNN, TrajectorySynthesizerAtt
 
 
@@ -77,7 +77,11 @@ class DreamerLearner:
         self.model = DreamerModel(config).to(config.DEVICE).eval()
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS).to(
             config.DEVICE)
-        self.critic = AugmentedCritic(config.FEAT, config.HIDDEN).to(config.DEVICE)
+        self.use_communication = config.USE_COMMUNICATION
+        if self.use_communication:
+            self.critic = AugmentedCritic(config.FEAT, config.HIDDEN).to(config.DEVICE)
+        else:
+            self.critic = Critic(config.FEAT, config.HIDDEN).to(config.DEVICE)
         self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
         self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
         if self.use_trajectory_synthesizer:

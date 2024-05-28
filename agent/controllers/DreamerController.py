@@ -7,7 +7,7 @@ from torch.distributions import OneHotCategorical
 
 from agent.models.DreamerModel import DreamerModel
 from networks.dreamer.action import Actor
-from networks.dreamer.critic import AugmentedCritic
+from networks.dreamer.critic import AugmentedCritic, Critic
 from networks.dreamer.rnns import rollout_policy_with_strategies
 
 
@@ -18,7 +18,11 @@ class DreamerController:
     def __init__(self, config):
         self.model = DreamerModel(config).eval()
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS)
-        self.critic = AugmentedCritic(config.FEAT, config.HIDDEN)
+        self.use_communication = config.USE_COMMUNICATION
+        if self.use_communication:
+            self.critic = AugmentedCritic(config.FEAT, config.HIDDEN)
+        else:
+            self.critic = Critic(config.FEAT, config.HIDDEN)
         self.expl_decay = config.EXPL_DECAY
         self.expl_noise = config.EXPL_NOISE
         self.expl_min = config.EXPL_MIN
