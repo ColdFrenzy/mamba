@@ -108,7 +108,8 @@ class DreamerLearner:
         if self.use_wandb:
             global wandb
             import wandb
-            wandb.init(dir=config.LOG_FOLDER)
+            wandb_run = wandb.init(dir=config.LOG_FOLDER, config=config.__dict__)
+            self.wandb_name = wandb_run.name
 
     def init_optimizers(self):
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)

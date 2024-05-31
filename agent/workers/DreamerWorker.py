@@ -160,3 +160,36 @@ class DreamerWorker:
         return self.controller.dispatch_buffer(), {"idx": self.runner_handle,
                                                    "reward": reward,
                                                    "steps_done": steps_done}
+    
+    def eval(self, dreamer_params, n_episodes):
+        self.controller.receive_params(dreamer_params)
+        win_rate = 0
+        mean_steps = 0
+        for _ in range(n_episodes):
+            state = self._wrap(self.env.reset())
+            steps_done = 0
+            self.done = defaultdict(lambda: False)
+            while True:
+                steps_done += 1
+                neighbors_mask = self.env.find_neighbors()
+                groups = self.create_group(neighbors_mask)
+                actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
+                next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
+                next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
+                neighbors_mask = deepcopy(torch.tensor(1. - neighbors_mask).bool())
+                self.done = done
+
+                state = next_state
+                if all([done[key] == 1 for key in range(self.env.n_agents)]):
+                    break
+
+            if self.env_type == Env.FLATLAND:
+                reward = sum(
+                    [1 for agent in self.env.agents if agent.status == RailAgentStatus.DONE_REMOVED]) / self.env.n_agents
+            else:
+                reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+            win_rate += reward
+            mean_steps += steps_done
+        win_rate = win_rate / n_episodes
+        mean_steps = mean_steps / n_episodes
+        return {"idx": self.runner_handle, "win_rate": win_rate, "mean_steps": mean_steps}
