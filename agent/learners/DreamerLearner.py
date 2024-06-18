@@ -78,7 +78,9 @@ class DreamerLearner:
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS).to(
             config.DEVICE)
         self.use_communication = config.USE_COMMUNICATION
-        if self.use_communication:
+        self.use_augmented_critic = config.USE_AUGMENTED_CRITIC
+        self.test_every = config.TEST_EVERY
+        if self.use_augmented_critic:
             self.critic = AugmentedCritic(config.FEAT, config.HIDDEN).to(config.DEVICE)
         else:
             self.critic = Critic(config.FEAT, config.HIDDEN).to(config.DEVICE)
@@ -108,8 +110,7 @@ class DreamerLearner:
         if self.use_wandb:
             global wandb
             import wandb
-            wandb_run = wandb.init(dir=config.LOG_FOLDER, config=config.__dict__)
-            self.wandb_name = wandb_run.name
+            wandb.init(dir=config.LOG_FOLDER, config=config.__dict__)
 
     def init_optimizers(self):
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)
@@ -242,3 +243,5 @@ class DreamerLearner:
         else:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         opt.step()
+
+

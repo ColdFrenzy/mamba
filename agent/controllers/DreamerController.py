@@ -19,7 +19,9 @@ class DreamerController:
         self.model = DreamerModel(config).eval()
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS)
         self.use_communication = config.USE_COMMUNICATION
-        if self.use_communication:
+        self.use_augmented_critic = config.USE_AUGMENTED_CRITIC
+        self.use_last_state_value = config.USE_LAST_STATE_VALUE
+        if self.use_augmented_critic:
             self.critic = AugmentedCritic(config.FEAT, config.HIDDEN)
         else:
             self.critic = Critic(config.FEAT, config.HIDDEN)
@@ -30,6 +32,7 @@ class DreamerController:
         self.strategy_duration = config.STRATEGY_DURATION
         self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
         self.current_strategies = None
+        self.episode_strategy_duration = {strat: 0 for strat in range(self.n_strategies)}
         self.init_rnns()
         self.init_buffer()
 
@@ -79,6 +82,7 @@ class DreamerController:
                                                             device=observations.device)
                 # select which strategy to use for each group
                 self.current_strategies = self.select_strategies(group_mask, neighbors_mask, self.model, self.actor, self.critic, self.prev_rnn_state)
+                self.episode_strategy_duration[self.current_strategies[0].item()] += 1
         state = self.model(observations, self.prev_actions, self.prev_rnn_state, neighbors_mask)
         feats = state.get_features()
         if self.use_strategy_selector:
@@ -115,7 +119,10 @@ class DreamerController:
             # WE CAN TRY BY USING ONLY THE VALUE OF THE LAST STATE OR A VALUE AVERAGE OVER TRAJECTORIES #
             #############################################################################################
             # items["imag_states"] shape (n_strategies, horizon, batch_size, n_agents, stoch + deter)
-            strategies_last_state = items["imag_states"].get_features()[:,-1].squeeze(1) # [n_strategies, n_agents, stoch + deter]
+            if self.use_last_state_value:
+                strategies_last_state = items["imag_states"].get_features()[:,-1].squeeze(1) # [n_strategies, n_agents, stoch + deter]
+            else:
+                strategies_last_state = torch.mean(items["imag_states"].get_features(), dim=1).squeeze(1) # [n_strategies, n_agents, stoch + deter]
 
             # strategy_distr shape (n_strategies, n_agents, 1). It has the probability of each strategy for each agent on the first dimension
             softmax_mask = neighbors_mask.repeat(self.n_strategies, 1, 1)

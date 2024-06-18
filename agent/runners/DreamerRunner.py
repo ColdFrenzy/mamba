@@ -48,26 +48,46 @@ class DreamerRunner:
         self.n_workers = n_workers
         self.learner = learner_config.create_learner()
         self.server = DreamerServer(n_workers, env_config, controller_config, self.learner.params())
+        self.env_name = env_config.to_dict()["env_configs0_env_name"]
 
     def run(self, max_steps=10 ** 10, max_episodes=10 ** 10):
         cur_steps, cur_episode = 0, 0
-
+        self.current_checkpoint = self.learner.test_every
+        Path(self.learner.config.WEIGHTS_FOLDER).mkdir(parents=True, exist_ok=True)
+        run_name = create_name(self.learner.config, self.env_name, max_steps)
         if self.learner.use_wandb:
+            wandb.run.name = run_name
             wandb.define_metric("steps")
             wandb.define_metric("reward", step_metric="steps")
-
+            wandb.run.tags = return_tags(self.learner.config, self.env_name, max_steps)
         while True:
             rollout, info = self.server.run()
             self.learner.step(rollout)
             cur_steps += info["steps_done"]
+            strat = {k: v for k, v in info.items() if 'strategy_' in k}
             cur_episode += 1
             if self.learner.use_wandb:
-                wandb.log({'reward': info["reward"], 'steps': cur_steps})
+                wandb.log({'reward': info["reward"], 'steps': cur_steps, **strat})
 
             print(cur_episode, self.learner.total_samples, info["reward"])
+            
+            if cur_steps >= self.current_checkpoint and cur_steps < max_steps:
+                current_name = create_name(self.learner.config, self.env_name, self.current_checkpoint)
+                save_file_name =  current_name + ".pt"
+                save_path = file_path = Path("wandb") / save_file_name
+                # at the end of the training evaluate over 100 episodes
+                self.server.append_eval(info['idx'], self.learner.params(), 100)
+                info = self.server.eval()
+                if self.learner.use_wandb:
+                    wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps']})
+                # and save the model
+                torch.save(self.learner.params(), save_path)
+                self.current_checkpoint += self.learner.test_every
+
+
             if cur_episode >= max_episodes or cur_steps >= max_steps:
-                Path(self.learner.config.WEIGHTS_FOLDER).mkdir(parents=True, exist_ok=True)
-                save_file_name = self.learner.wandb_name + ".pt"
+                current_name = create_name(self.learner.config, self.env_name, self.current_checkpoint)
+                save_file_name =  current_name + ".pt"
                 save_path = file_path = Path("wandb") / save_file_name
                 # at the end of the training evaluate over 100 episodes
                 self.server.append_eval(info['idx'], self.learner.params(), 100)
@@ -79,3 +99,66 @@ class DreamerRunner:
                 break
             self.server.append(info['idx'], self.learner.params())
 
+
+
+def create_name(config, env_name, max_steps):
+    """Return the name of the saving file based on the configuration.
+    The name is composed as: "architecture_" + "env_name_" + "
+    
+    """
+
+    if config.USE_COMMUNICATION:
+        file_name = "MAMBA_"
+    else:
+        file_name = "MultiDreamer_"
+
+    file_name = file_name + env_name
+    if config.USE_SHARED_REWARD:
+        file_name = file_name + "_SR"
+    if config.USE_STRATEGY_ADVANTAGE:
+        file_name = file_name + "_SA"
+    if config.USE_AUGMENTED_CRITIC:
+        file_name = file_name + "_AC"
+    if config.USE_TRAJECTORY_SYNTHESIZER:
+        file_name = file_name + "_TS"
+    if config.USE_LAST_STATE_VALUE:
+        file_name = file_name + "_LSV"
+    file_name = file_name + "_" + abbreviate_number(max_steps)
+
+    return file_name
+
+
+
+def return_tags(config, env_name, max_steps):
+    tags = []
+    if config.USE_COMMUNICATION:
+        tags.append("MAMBA")
+    else:
+        tags.append("MultiDreamer")
+    tags.append(env_name)
+    if config.USE_SHARED_REWARD:
+        tags.append("SR")
+    if config.USE_STRATEGY_ADVANTAGE:
+        tags.append("SA")
+    if config.USE_AUGMENTED_CRITIC:
+        tags.append("AC")
+    if config.USE_TRAJECTORY_SYNTHESIZER:
+        tags.append("TS")
+    if config.USE_LAST_STATE_VALUE:
+        tags.append("LSV")
+
+    tags.append(abbreviate_number(max_steps))
+
+    return tags
+
+
+
+def abbreviate_number(num):
+    if num >= 1_000_000_000:
+        return f'{num / 1_000_000_000:.1f}B'
+    elif num >= 1_000_000:
+        return f'{num / 1_000_000:.1f}M'
+    elif num >= 1_000:
+        return f'{num / 1_000:.1f}K'
+    else:
+        return str(num)

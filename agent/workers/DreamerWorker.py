@@ -157,9 +157,21 @@ class DreamerWorker:
                 [1 for agent in self.env.agents if agent.status == RailAgentStatus.DONE_REMOVED]) / self.env.n_agents
         else:
             reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+        if self.controller.use_strategy_selector:
+            strategy_duration = {}
+            for strat in self.controller.episode_strategy_duration.keys():
+                strategy_duration["strategy_" + str(strat)] = self.controller.episode_strategy_duration[strat]/sum(self.controller.episode_strategy_duration.values())
+            self.controller.episode_strategy_duration = {strat: 0 for strat in range(self.controller.n_strategies)}
+            return self.controller.dispatch_buffer(), {"idx": self.runner_handle,
+                                                   "reward": reward,
+                                                   "steps_done": steps_done,
+                                                    **strategy_duration}
         return self.controller.dispatch_buffer(), {"idx": self.runner_handle,
                                                    "reward": reward,
-                                                   "steps_done": steps_done}
+                                                   "steps_done": steps_done,
+                                                    }
+                                                   
+    
     
     def eval(self, dreamer_params, n_episodes):
         self.controller.receive_params(dreamer_params)
