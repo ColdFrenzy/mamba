@@ -54,6 +54,10 @@ class DreamerMemory:
         return torch.as_tensor(val[idxs].reshape(self.sequence_length, batch_size, self.n_agents, -1)).to(self.device)
 
     def get_transitions(self, idxs):
+        """return a dictionary of the transitions for the given indexes as tensors
+        :param idxs: numpy array of indexes
+        :return: dictionary of tensors of shape (sequence_length, batch_size, n_agents, -1)
+        """
         batch_size = len(idxs)
         vec_idxs = idxs.transpose().reshape(-1)
         observation = self.process_batch(self.observations, vec_idxs, batch_size)[1:]

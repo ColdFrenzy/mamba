@@ -8,7 +8,11 @@ from torch.distributions import OneHotCategorical
 from agent.models.DreamerModel import DreamerModel
 from networks.dreamer.action import Actor
 from networks.dreamer.critic import AugmentedCritic, Critic
+from agent.learners.DreamerLearner import initialize_weights
+from agent.utils.strategy_utils import encode_strategy
 from networks.dreamer.rnns import rollout_policy_with_strategies
+from networks.dreamer.trajectory_synthesizer import TrajectorySynthesizerRNN, TrajectorySynthesizerAtt
+
 
 
 class DreamerController:
@@ -20,7 +24,13 @@ class DreamerController:
         self.actor = Actor(config.ACTOR_FEAT, config.ACTION_SIZE, config.ACTION_HIDDEN, config.ACTION_LAYERS)
         self.use_communication = config.USE_COMMUNICATION
         self.use_augmented_critic = config.USE_AUGMENTED_CRITIC
+        self.config = config
         self.use_last_state_value = config.USE_LAST_STATE_VALUE
+        self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
+        if self.use_trajectory_synthesizer:
+            self.trajectory_synthesizer =  TrajectorySynthesizerRNN(config.ACTION_SIZE, config.DETERMINISTIC, config.STOCHASTIC, config.HORIZON,\
+                                                               config.TRAJECTORY_SYNTHESIZER_HIDDEN, config.TRAJECTORY_SYNTHESIZER_LAYERS)
+            initialize_weights(self.trajectory_synthesizer, mode='xavier')
         if self.use_augmented_critic:
             self.critic = AugmentedCritic(config.FEAT, config.HIDDEN)
         else:
@@ -40,6 +50,8 @@ class DreamerController:
         self.model.load_state_dict(params['model'])
         self.actor.load_state_dict(params['actor'])
         self.critic.load_state_dict(params['critic'])
+        if self.use_trajectory_synthesizer:
+            self.trajectory_synthesizer.load_state_dict(params['trajectory_synthesizer'])
 
     def init_buffer(self):
         self.buffer = defaultdict(list)
@@ -49,6 +61,8 @@ class DreamerController:
         self.prev_actions = None
 
     def dispatch_buffer(self):
+        """Return the buffer as a dictionary of numpy arrays, and reset the buffer.
+        """
         total_buffer = {k: np.asarray(v, dtype=np.float32) for k, v in self.buffer.items()}
         last = np.zeros_like(total_buffer['done'])
         last[-1] = 1.0
@@ -150,14 +164,3 @@ class DreamerController:
         self.expl_noise *= self.expl_decay
         self.expl_noise = max(self.expl_noise, self.expl_min)
         return action
-
-def encode_strategy(strategy, n_strategies):
-    """return a one hot encoding representation from a strategy index
-    :param strategy: torch.Tensor(n_agents)
-    :return: torch.Tensor(n_agents, n_strategies-1)
-    """
-
-    strategy_encoded = torch.zeros(strategy.size(0), n_strategies-1) if n_strategies > 1 else torch.zeros(strategy.size(0), 1)
-    for i in range(strategy.size(0)):
-        strategy_encoded[i, strategy[i]-1] = 1
-    return strategy_encoded
