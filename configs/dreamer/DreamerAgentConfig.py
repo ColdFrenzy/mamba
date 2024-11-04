@@ -12,18 +12,19 @@ RSSM_STATE_MODE = 'discrete'
 class DreamerConfig(Config):
     def __init__(self):
         super().__init__()
-        self.USE_TEST_CONFIG = True # use a small config for testing
+        self.USE_TEST_CONFIG = False # use a small config for testing
         self.USE_TRAJECTORY_SYNTHESIZER = True
         self.USE_STRATEGY_SELECTOR = True
         self.USE_COMMUNICATION = False # learn communication and use it also in the imagination
         self.USE_STRATEGY_ADVANTAGE = True
         self.USE_SHARED_REWARD = True
-        self.USE_AUGMENTED_CRITIC = False
+        self.USE_AUGMENTED_CRITIC = True
         self.USE_WANDB = False
         self.USE_LAST_STATE_VALUE = False # whether to use a value function for the last state in the trajectory or the average value
         self.TEST_EVERY = 10000 # every ~10000 steps test the model for evaluating performances
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
         self.N_STRATEGIES = 2 if self.USE_TEST_CONFIG else 4
+        self.HORIZON = 5 if self.USE_TEST_CONFIG else 15
         self.HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.MODEL_HIDDEN = 64 if self.USE_TEST_CONFIG else 256
         self.EMBED = 64 if self.USE_TEST_CONFIG else 256

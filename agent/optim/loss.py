@@ -6,7 +6,6 @@ import torch.distributions as td
 
 from agent.optim.utils import rec_loss, compute_return, state_divergence_loss, calculate_ppo_loss, \
     batch_multi_agent, log_prob_loss, info_loss, batch_strat_horizon
-from agent.controllers.DreamerController import encode_strategy
 from agent.utils.params import FreezeParameters
 from networks.dreamer.rnns import rollout_representation, rollout_policy, rollout_policy_with_strategies
 
@@ -60,6 +59,17 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
 
 
 def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True):
+    """rollout the actor and the critic in the imagination
+    :param obs: The observations, shape (time_steps, batch_size, n_agents, obs_size)
+    :param action: The actions, shape (time_steps, batch_size, n_agents, action_size)
+    :param last: The last state, shape (batch_size, n_agents, feat_size)
+    :param model: The model
+    :param actor: The actor
+    :param critic: The critic
+    :param config: The config
+    :param neighbors_mask: The neighbors mask, shape (time_steps, batch_size, n_agents, n_agents)
+    :param detach_results: Whether to detach the results
+    """
     n_agents = obs.shape[2]
     with FreezeParameters([model]):
         embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [batch*(seq_len-1), n_agents, feat] [760, 3, 256]

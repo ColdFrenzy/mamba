@@ -4,13 +4,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 from agent.memory.DreamerMemory import DreamerMemory
 from agent.models.DreamerModel import DreamerModel
 from agent.optim.loss import model_loss, actor_loss, value_loss, actor_rollout
 from agent.optim.utils import advantage, info_nce_loss
 from agent.utils.params import get_parameters
+from agent.utils.strategy_utils import generate_trajectory_scatterplot
 from environments import Env
 from networks.dreamer.action import Actor
 from networks.dreamer.critic import AugmentedCritic, Critic
@@ -48,30 +48,12 @@ def initialize_weights(mod, scale=1.0, mode='ortho'):
             if len(p.data.shape) >= 2:
                 torch.nn.init.xavier_uniform_(p.data)
 
-def generate_trajectory_scatterplot(embed_traj):
-    """
-    Given multiple trajectories generated from different strategies and embedded in a lower dimensional space, this function returns 
-    an image that represents their distribution in a 2D space (by picking the first two features).
-    alternatively we could use t-distributed stochastic neighbor embedding (t-SNE)
-    :params embed_traj: [num_strategies, embed_dim] 
-    :return traj_img: pyplot image
-    """
-    reduced_embed_traj = embed_traj[:,:,:2].detach().clone().cpu()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for i in range(reduced_embed_traj.shape[0]):
-        ax.scatter(reduced_embed_traj[i, :, 0], reduced_embed_traj[i, :, 1], label=f'Strategy {i}')
-    plt.title('Trajectories scatterplot in 2D Space')
-    plt.legend()
-
-    # gcf gets the current figure
-    traj_img = plt.gcf()
-
-    return traj_img
-
 
 class DreamerLearner:
-    # learner has both the actor and critic since it needs to optimize the policy gradient objective
-    # The controller has only the actor since it's used for inference.
+    """
+    Learner has both the actor and critic since it needs to optimize the policy gradient objective
+    The controller has only the actor since it's used for inference.
+    """
     def __init__(self, config):
         self.config = config
         self.model = DreamerModel(config).to(config.DEVICE).eval()
@@ -241,5 +223,3 @@ class DreamerLearner:
         else:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         opt.step()
-
-

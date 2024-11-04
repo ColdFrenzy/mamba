@@ -21,7 +21,6 @@ class DreamerLearnerConfig(DreamerConfig):
         self.TARGET_UPDATE = 1
         self.DEVICE = 'cpu' # cuda
         self.GRAD_CLIP = 100.0
-        self.HORIZON = 5 if self.USE_TEST_CONFIG else 15
         self.ENTROPY = 0.001
         self.ENTROPY_ANNEALING = 0.99998
         self.GRAD_CLIP_POLICY = 100.0
