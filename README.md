@@ -9,7 +9,6 @@ The repository contains MAMBA implementation as well as fine-tuned hyperparamete
 
 ```
 pip install wheel
-pip install flatland-2.2.2/
 pip install -r requirements.txt 
 ```
 
@@ -21,10 +20,10 @@ https://github.com/oxwhirl/smac#installing-starcraft-ii
 ## Usage
 
 ```
-python3 train.py --n_workers 2 --env flatland --env_type 5_agents
+python3 train.py --n_workers 2 --env starcraft --env_type 3m
 ```
 
-Two environments are supported for env flag: flatland and starcraft.
+Two environments are supported for env flag: starcraft.
 
 ### Optimal parameters
 To train agents with optimal parameters from the paper they should be copied from `configs/dreamer/optimal/` folder to [DreamerAgentConfig.py](https://github.com/jbr-ai-labs/mamba/blob/main/configs/dreamer/DreamerAgentConfig.py) and [DreamerLearnerConfig.py](https://github.com/jbr-ai-labs/mamba/blob/main/configs/dreamer/DreamerLearnerConfig.py)
@@ -36,12 +35,6 @@ To train agents with optimal parameters from the paper they should be copied fro
 The code for the environment can be found at 
 [https://github.com/oxwhirl/smac](https://github.com/oxwhirl/smac)
 
-## Flatland
-
-<img height="300" alt="flatland" src="https://user-images.githubusercontent.com/22059171/152656405-b4ab7e6c-d691-4300-a419-a3d4288513e8.png">
-
-The original code for the environment can be found at 
-[https://github.com/jbr-ai-labs/NeurIPS2020-Flatland-Competition-Solution](https://github.com/jbr-ai-labs/NeurIPS2020-Flatland-Competition-Solution)
 
 ## Code Structure
 
@@ -58,19 +51,3 @@ The original code for the environment can be found at
 - ```networks``` contains neural network architectures
 
 
-## Citation
-
-    @inproceedings{10.5555/3535850.3535894,
-          author = {Egorov, Vladimir and Shpilman, Alexei},
-          title = {Scalable Multi-Agent Model-Based Reinforcement Learning},
-          year = {2022},
-          isbn = {9781450392136},
-          publisher = {International Foundation for Autonomous Agents and Multiagent Systems},
-          address = {Richland, SC},
-          booktitle = {Proceedings of the 21st International Conference on Autonomous Agents and Multiagent Systems},
-          pages = {381–390},
-          numpages = {10},
-          keywords = {communication, multi-agent reinforcement learning, model-based reinforcement learning},
-          location = {Virtual Event, New Zealand},
-          series = {AAMAS '22}
-    }

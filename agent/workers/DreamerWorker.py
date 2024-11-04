@@ -3,7 +3,6 @@ from copy import deepcopy
 import ray
 import random
 import torch
-from flatland.envs.agent_utils import RailAgentStatus
 from collections import defaultdict
 
 from environments import Env
@@ -30,18 +29,10 @@ class DreamerWorker:
         avail_actions = []
         observations = []
         fakes = []
-        if self.env_type == Env.FLATLAND:
-            nn_mask = (1. - torch.eye(self.env.n_agents)).bool()
-        else:
-            nn_mask =  (1. - neighbors_mask).bool() # nn_mask=None
+        nn_mask =  (1. - neighbors_mask).bool() # nn_mask=None
 
         for handle in range(self.env.n_agents):
-            if self.env_type == Env.FLATLAND:
-                for opp_handle in self.env.obs_builder.encountered[handle]:
-                    if opp_handle != -1:
-                        nn_mask[handle, opp_handle] = False
-            else:
-                avail_actions.append(torch.tensor(self.env.get_avail_agent_actions(handle)))
+            avail_actions.append(torch.tensor(self.env.get_avail_agent_actions(handle)))
 
             if self._check_handle(handle) and handle in state:
                 fakes.append(torch.zeros(1, 1))
@@ -152,11 +143,8 @@ class DreamerWorker:
                     self.controller.update_buffer(items)
                 break
 
-        if self.env_type == Env.FLATLAND:
-            reward = sum(
-                [1 for agent in self.env.agents if agent.status == RailAgentStatus.DONE_REMOVED]) / self.env.n_agents
-        else:
-            reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+
+        reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
         if self.controller.use_strategy_selector:
             strategy_duration = {}
             for strat in self.controller.episode_strategy_duration.keys():
@@ -195,11 +183,7 @@ class DreamerWorker:
                 if all([done[key] == 1 for key in range(self.env.n_agents)]):
                     break
 
-            if self.env_type == Env.FLATLAND:
-                reward = sum(
-                    [1 for agent in self.env.agents if agent.status == RailAgentStatus.DONE_REMOVED]) / self.env.n_agents
-            else:
-                reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+            reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
             win_rate += reward
             mean_steps += steps_done
         win_rate = win_rate / n_episodes

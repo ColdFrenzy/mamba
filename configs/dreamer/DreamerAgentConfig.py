@@ -19,7 +19,7 @@ class DreamerConfig(Config):
         self.USE_STRATEGY_ADVANTAGE = True
         self.USE_SHARED_REWARD = True
         self.USE_AUGMENTED_CRITIC = False
-        self.USE_WANDB = True
+        self.USE_WANDB = False
         self.USE_LAST_STATE_VALUE = False # whether to use a value function for the last state in the trajectory or the average value
         self.TEST_EVERY = 10000 # every ~10000 steps test the model for evaluating performances
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15

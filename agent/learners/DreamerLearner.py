@@ -207,8 +207,6 @@ class DreamerLearner:
                 if self.use_wandb and np.random.randint(20) == 9:
                     wandb.log({'Agent/val_loss': val_loss, 'Agent/actor_loss': loss})
                 self.apply_optimizer(self.critic_optimizer, self.critic, val_loss, self.config.GRAD_CLIP_POLICY)
-                if self.config.ENV_TYPE == Env.FLATLAND and self.cur_update % self.config.TARGET_UPDATE == 0:
-                    self.old_critic = deepcopy(self.critic)
         # after updating the policy with the ppo routine, let's update the trajectory synthesizer
         if self.use_trajectory_synthesizer:
             # only old_policy requires grad
