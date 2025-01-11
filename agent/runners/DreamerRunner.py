@@ -11,7 +11,9 @@ class DreamerServer:
     """
     def __init__(self, n_workers, env_config, controller_config, model):
         # if local_mode=True it runs the workers in series instead of parallel
-        ray.init(local_mode=True)
+        # ray.init(local_mode=True)
+        # ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "1"}})
+
 
         self.workers = [DreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
         self.tasks = [worker.run.remote(model) for worker in self.workers]
@@ -47,7 +49,8 @@ class DreamerServerEval:
     """
     def __init__(self, n_workers, env_config, controller_config, learner_config, model, n_episodes):
         # if local_mode=True it runs the workers in series instead of parallel
-        ray.init(local_mode=True)
+        # ray.init(local_mode=True)
+        # ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "1"}})
 
         self.workers = [DreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
         self.eval_tasks = [worker.eval.remote(model, n_episodes, learner_config, return_all=True, return_strategy_plot=True) for worker in self.workers]

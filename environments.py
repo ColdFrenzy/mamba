@@ -3,6 +3,7 @@ from enum import Enum
 
 class Env(str, Enum):
     STARCRAFT = "starcraft"
+    GRIDWORLD = "gridworld"
 
 
 

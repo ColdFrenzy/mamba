@@ -10,15 +10,19 @@ class DreamerMemory:
         self.sequence_length = sequence_length
         self.action_size = action_size
         self.obs_size = obs_size
+        self.rgb_input = type(obs_size) is tuple
         self.device = device
         self.env_type = env_type
         self.init_buffer(n_agents, env_type)
 
     def init_buffer(self, n_agents, env_type):
-        self.observations = np.empty((self.capacity, n_agents, self.obs_size), dtype=np.float32)
+        if self.rgb_input:
+            self.observations = np.empty((self.capacity, n_agents, *self.obs_size), dtype=np.float32)
+        else:
+            self.observations = np.empty((self.capacity, n_agents, self.obs_size), dtype=np.float32)
         self.actions = np.empty((self.capacity, n_agents, self.action_size), dtype=np.float32)
         self.av_actions = np.empty((self.capacity, n_agents, self.action_size),
-                                   dtype=np.float32) if env_type == Env.STARCRAFT else None
+                                   dtype=np.float32)
         self.rewards = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
         self.dones = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
         self.fake = np.empty((self.capacity, n_agents, 1), dtype=np.float32)
@@ -50,8 +54,11 @@ class DreamerMemory:
     def sample(self, batch_size):
         return self.get_transitions(self.sample_positions(batch_size))
 
-    def process_batch(self, val, idxs, batch_size):
-        return torch.as_tensor(val[idxs].reshape(self.sequence_length, batch_size, self.n_agents, -1)).to(self.device)
+    def process_batch(self, val, idxs, batch_size, rgb_input=False):
+        if rgb_input:
+            return torch.as_tensor(val[idxs].reshape(self.sequence_length, batch_size, self.n_agents, *self.obs_size)).to(self.device)
+        else:
+            return torch.as_tensor(val[idxs].reshape(self.sequence_length, batch_size, self.n_agents, -1)).to(self.device)
 
     def get_transitions(self, idxs):
         """return a dictionary of the transitions for the given indexes as tensors
@@ -60,7 +67,7 @@ class DreamerMemory:
         """
         batch_size = len(idxs)
         vec_idxs = idxs.transpose().reshape(-1)
-        observation = self.process_batch(self.observations, vec_idxs, batch_size)[1:]
+        observation = self.process_batch(self.observations, vec_idxs, batch_size, self.rgb_input)[1:]
         neighbors_mask = self.process_batch(self.neighbors_mask, vec_idxs, batch_size)[1:]
         reward = self.process_batch(self.rewards, vec_idxs, batch_size)[:-1]
         action = self.process_batch(self.actions, vec_idxs, batch_size)[:-1]

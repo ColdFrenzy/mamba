@@ -1,7 +1,7 @@
-# MAMBA
-This code accompanies the paper "[Scalable Multi-Agent Model-Based Reinforcement Learning](https://arxiv.org/abs/2205.15023)".
-
-The repository contains MAMBA implementation as well as fine-tuned hyperparameters in ```configs/dreamer/optimal``` folder.
+# Agree Before Acting through Latent Imagination
+This is the code for the paper "[Agree Before Acting through Latent Imagination]()".
+This project builds upon the implementation of [MAMBA](https://github.com/jbr-ai-labs/mamba), which serves as the starting point for our code. Additionally, we modify the environment from [gym-multigrid](https://github.com/ArnaudFickinger/gym-multigrid) to suit the needs of this project.
+The repository also containes fine-tuned hyperparameters in ```configs/dreamer/optimal``` folder.
 
 ## Installation
 
@@ -27,6 +27,9 @@ Two environments are supported for env flag: starcraft.
 
 ### Optimal parameters
 To train agents with optimal parameters from the paper they should be copied from `configs/dreamer/optimal/` folder to [DreamerAgentConfig.py](https://github.com/jbr-ai-labs/mamba/blob/main/configs/dreamer/DreamerAgentConfig.py) and [DreamerLearnerConfig.py](https://github.com/jbr-ai-labs/mamba/blob/main/configs/dreamer/DreamerLearnerConfig.py)
+
+## GYM MULTIGRID
+<img height="300" alt="gym_multigrid" src="">
 
 ## SMAC
 

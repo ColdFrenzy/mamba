@@ -15,13 +15,13 @@ class DreamerConfig(Config):
         self.USE_TEST_CONFIG = False # use a small config for testing
         self.USE_TRAJECTORY_SYNTHESIZER = True
         self.USE_STRATEGY_SELECTOR = True
-        self.USE_COMMUNICATION = False # learn communication and use it also in the imagination
-        self.USE_STRATEGY_ADVANTAGE = True
+        self.USE_COMMUNICATION = True # learn communication and use it also in the imagination
+        self.USE_STRATEGY_ADVANTAGE = False
         self.USE_SHARED_REWARD = True
         self.USE_AUGMENTED_CRITIC = True
-        self.USE_WANDB = False
+        self.USE_WANDB = True
         self.USE_LAST_STATE_VALUE = False # whether to use a value function for the last state in the trajectory or the average value
-        self.TEST_EVERY = 10000 # every ~10000 steps test the model for evaluating performances
+        self.TEST_EVERY =  5 if self.USE_TEST_CONFIG else 10000 # every ~10000 steps test the model for evaluating performances
         self.STRATEGY_DURATION = 5 if self.USE_TEST_CONFIG else 15
         self.N_STRATEGIES = 2 if self.USE_TEST_CONFIG else 4
         self.HORIZON = 5 if self.USE_TEST_CONFIG else 15

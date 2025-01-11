@@ -15,7 +15,8 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     batch_size = obs.shape[1]
     n_agents = obs.shape[2]
 
-    embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))
+
+    embed = model.observation_encoder(obs.reshape(-1, n_agents, *obs.shape[3:]))
     embed = embed.reshape(time_steps, batch_size, n_agents, -1)                     # [760, 3, 256] to [19, 40, 3, 256]  
 
     prev_state = model.representation.initial_state(batch_size, n_agents, device=obs.device)
@@ -26,10 +27,16 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     feat_dec = post.get_features() # feat_dec is [stoch_t, deter_t]
     # fakes means samples from agents that are dead and use an absorbing state
     # i_feat is the output of the hidden layer before the last layer of the observation decoder
-    reconstruction_loss, i_feat = rec_loss(model.observation_decoder,
-                                           feat_dec.reshape(-1, n_agents, feat_dec.shape[-1]),
-                                           obs[:-1].reshape(-1, n_agents, obs.shape[-1]),
-                                           1. - fake[:-1].reshape(-1, n_agents, 1))
+    if model.observation_decoder.rgb_input:
+        reconstruction_loss, i_feat = rec_loss(model.observation_decoder, 
+                                                feat_dec.reshape(-1, n_agents, feat_dec.shape[-1]),
+                                                obs[:-1].reshape(-1, n_agents, *obs.shape[3:]),
+                                                1. - fake[:-1].reshape(-1, n_agents, 1))
+    else:
+        reconstruction_loss, i_feat = rec_loss(model.observation_decoder,
+                                                feat_dec.reshape(-1, n_agents, feat_dec.shape[-1]),
+                                                obs[:-1].reshape(-1, n_agents, obs.shape[-1]),
+                                                1. - fake[:-1].reshape(-1, n_agents, 1))
     reward_loss = F.smooth_l1_loss(model.reward_model(feat), reward[1:])
     pcont_loss = log_prob_loss(model.pcont, feat, (1. - done[1:]))
     av_action_loss = log_prob_loss(model.av_action, feat_dec, av_action[:-1]) if av_action is not None else 0.
@@ -72,7 +79,10 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
     """
     n_agents = obs.shape[2]
     with FreezeParameters([model]):
-        embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [batch*(seq_len-1), n_agents, feat] [760, 3, 256]
+        if model.observation_encoder.rgb_input:
+            embed = model.observation_encoder(obs.reshape(-1, n_agents, *obs.shape[3:]))  # [batch*(seq_len-1), n_agents, channel, width, height]
+        else:
+            embed = model.observation_encoder(obs.reshape(-1, n_agents, obs.shape[-1]))         # [batch*(seq_len-1), n_agents, feat] [760, 3, 256]
         embed = embed.reshape(obs.shape[0], obs.shape[1], n_agents, -1)                     # [batch, seq_len-1, n_agents, feat] [19, 40 , 3, 256]
         prev_state = model.representation.initial_state(obs.shape[1], obs.shape[2], device=obs.device)
         prior, post, _ = rollout_representation(model.representation, obs.shape[0], embed, action,   

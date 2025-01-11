@@ -4,6 +4,8 @@ import copy
 # Attention, in Multiagent every worker goes throug curriculum
 class EnvCurriculum():
     def __init__(self, env_configs, env_episodes):
+        """ this class is used to create a curriculum of environments
+        """
         self.env_configs = env_configs
         self.env_episodes = env_episodes
         self._pos_env = -1

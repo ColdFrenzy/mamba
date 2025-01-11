@@ -7,7 +7,7 @@ setup(
     description="Code for the 'Agree Before Acting' paper",
     author="coldfrenzy",
     install_requires=[
-        "numpy~=1.18.5",
+        "numpy~=1.21.0",
         "torch~=1.7.0",
         "ray~=1.13.0",
         "wandb~=0.13.11",
@@ -26,6 +26,9 @@ setup(
         "networkx~=2.6.3",
         "graphviz~=0.20.1",
         "imageio~=2.26.0",
+        "gymnasium~=1.0.0",
+        "scikit-learn~=1.3.2",
+        "umap-learn~=0.5.7",
     ],  # Leave empty or add only internal requirements here
     include_package_data=True,
 )

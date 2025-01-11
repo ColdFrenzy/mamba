@@ -25,11 +25,9 @@ class DreamerWorker:
         self.env_type = env_config.ENV_TYPE
 
     def _check_handle(self, handle):
-        if self.env_type == Env.STARCRAFT:
+        if self.env_type == Env.STARCRAFT or self.env_type == Env.GRIDWORLD:
             return self.done[handle] == 0
-        else:
-            return self.env.agents[handle].status in (RailAgentStatus.ACTIVE, RailAgentStatus.READY_TO_DEPART) \
-                   and not self.env.obs_builder.deadlock_checker.is_deadlocked(handle)
+
 
     def _select_actions(self, state, steps_done, groups, neighbors_mask):
         avail_actions = []
@@ -58,6 +56,7 @@ class DreamerWorker:
         return actions, observations, torch.cat(fakes).unsqueeze(0), av_action
 
     def _wrap(self, d):
+        # turn all items into float 
         for key, value in d.items():
             d[key] = torch.tensor(value).float()
         return d
@@ -88,7 +87,10 @@ class DreamerWorker:
         return group_mask
 
     def get_absorbing_state(self):
-        state = torch.zeros(1, self.in_dim)
+        if self.env_type == Env.STARCRAFT:
+            state = torch.zeros(1, self.in_dim)
+        elif self.env_type == Env.GRIDWORLD:
+            state = torch.zeros(1, *self.in_dim)
         return state
 
     def augment(self, data, inverse=False):
@@ -140,10 +142,10 @@ class DreamerWorker:
                     actions.scatter_(2, index.unsqueeze(-1), 1.)
                     items = {"observation": obs,
                              "action": actions,
-                             "reward": torch.zeros(1, self.env.n_agents, 1),
-                             "fake": torch.ones(1, self.env.n_agents, 1),
-                             "done": torch.ones(1, self.env.n_agents, 1),
-                             "avail_action": torch.ones_like(actions) if self.env_type == Env.STARCRAFT else None,
+                             "reward": torch.zeros_like(self.augment(reward)),
+                             "fake": torch.ones_like(fakes),
+                             "done": torch.ones_like(self.augment(done)),
+                             "avail_action": torch.ones_like(actions),
                              "neighbors_mask": torch.zeros(1, self.env.n_agents, self.env.n_agents, dtype=bool)}
                     self.controller.update_buffer(items)
                     self.controller.update_buffer(items)
@@ -193,7 +195,7 @@ class DreamerWorker:
                 actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
                 next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
                 next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
-                neighbors_mask = deepcopy(torch.tensor(1. - neighbors_mask).bool())
+                neighbors_mask = (1. - neighbors_mask).clone().detach().bool()
                 self.done = done
                 if return_strategy_plot:
                     self.controller.update_buffer({"action": actions,
@@ -218,7 +220,7 @@ class DreamerWorker:
                                     "reward": torch.zeros(1, self.env.n_agents, 1),
                                     "fake": torch.ones(1, self.env.n_agents, 1),
                                     "done": torch.ones(1, self.env.n_agents, 1),
-                                    "avail_action": torch.ones_like(actions) if self.env_type == Env.STARCRAFT else None,
+                                    "avail_action": torch.ones_like(actions),
                                     "neighbors_mask": torch.zeros(1, self.env.n_agents, self.env.n_agents, dtype=bool)}
                             self.controller.update_buffer(items)
                             self.controller.update_buffer(items)

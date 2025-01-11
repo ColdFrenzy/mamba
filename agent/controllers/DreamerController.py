@@ -63,6 +63,7 @@ class DreamerController:
     def dispatch_buffer(self):
         """Return the buffer as a dictionary of numpy arrays, and reset the buffer.
         """
+        # tutti hanno 552 samples tranne avail_actions che ha 550
         total_buffer = {k: np.asarray(v, dtype=np.float32) for k, v in self.buffer.items()}
         last = np.zeros_like(total_buffer['done'])
         last[-1] = 1.0

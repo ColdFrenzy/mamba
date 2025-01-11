@@ -1,19 +1,27 @@
 import argparse
 import os
+import ray
 
 from agent.runners.DreamerRunner import DreamerRunner
 from configs import Experiment
-from configs.EnvConfigs import StarCraftConfig, EnvCurriculumConfig
+from configs.EnvConfigs import StarCraftConfig, EnvCurriculumConfig, GridWorldConfig
 
 from configs.dreamer.DreamerControllerConfig import DreamerControllerConfig
 from configs.dreamer.DreamerLearnerConfig import DreamerLearnerConfig
 from environments import Env
 
 
+ray.init(
+    runtime_env={
+        "env_vars": {"RAY_DEBUG": "1"},
+    }
+)
+# ray.init()
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default="starcraft", help='SMAC or GridWorld env')
-    parser.add_argument('--env_name', type=str, default="3m", help='Specific setting')
+    parser.add_argument('--env', type=str, default="gridworld", help='SMAC or GridWorld env')
+    parser.add_argument('--env_name', type=str, default="collect_game", help='Specific setting')
     parser.add_argument('--n_workers', type=int, default=1, help='Number of workers')
     return parser.parse_args()
 
@@ -41,6 +49,17 @@ def prepare_starcraft_configs(env_name):
             "obs_builder_config": None}
 
 
+def prepare_gridworld_configs(env_name):
+    agent_configs = [DreamerControllerConfig(), DreamerLearnerConfig()]
+    env_config = GridWorldConfig(env_name)
+    get_env_info(agent_configs, env_config.create_env())
+    return {"env_config": (env_config, 100),
+            "controller_config": agent_configs[0],
+            "learner_config": agent_configs[1],
+            "reward_config": None,
+            "obs_builder_config": None}
+
+
 if __name__ == "__main__":
     RANDOM_SEED = 23
     args = parse_args()
@@ -48,6 +67,8 @@ if __name__ == "__main__":
         current_dir = os.path.dirname(os.path.abspath(__file__))
         os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
         configs = prepare_starcraft_configs(args.env_name)
+    elif args.env == Env.GRIDWORLD:
+        configs = prepare_gridworld_configs(args.env_name)
     else:
         raise Exception("Unknown environment")
     configs["env_config"][0].ENV_TYPE = Env(args.env)

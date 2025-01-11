@@ -33,6 +33,8 @@ def generate_trajectory_scatterplot(embed_traj):
 
     # gcf gets the current figure
     traj_img = plt.gcf()
+    
+    plt.close(fig)
 
     return traj_img
 

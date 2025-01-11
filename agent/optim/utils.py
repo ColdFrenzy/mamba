@@ -6,8 +6,15 @@ from torch.nn import functional as F
 
 def rec_loss(decoder, z, x, fake):
     x_pred, feat = decoder(z)
-    batch_size = np.prod(list(x.shape[:-1]))
-    gen_loss1 = (F.smooth_l1_loss(x_pred, x, reduction='none') * fake).sum() / batch_size
+    if decoder.rgb_input:
+        batch_size = np.prod(list(x.shape[:-3]))
+        sample_loss = F.smooth_l1_loss(x_pred, x, reduction='none')
+        sample_loss = sample_loss.reshape(sample_loss.shape[0], sample_loss.shape[1], -1).sum(dim=-1).unsqueeze(dim=-1)
+        gen_loss1 = (sample_loss * fake).sum() / batch_size
+    else:
+        batch_size = np.prod(list(x.shape[:-1]))
+        gen_loss1 = (F.smooth_l1_loss(x_pred, x, reduction='none') * fake).sum() / batch_size
+    
     return gen_loss1, feat
 
 
