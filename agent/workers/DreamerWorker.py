@@ -3,6 +3,7 @@ from copy import deepcopy
 import ray
 import random
 import torch
+import numpy as np
 from collections import defaultdict
 from agent.utils.strategy_utils import generate_trajectories
 from agent.memory.DreamerMemory import DreamerMemory
@@ -122,7 +123,7 @@ class DreamerWorker:
             actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
             next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
             next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
-            neighbors_mask = deepcopy(torch.tensor(1. - neighbors_mask).bool())
+            neighbors_mask = (1. - neighbors_mask).clone().detach().bool()
             self.done = done
             self.controller.update_buffer({"action": actions,
                                            "observation": obs,
@@ -184,7 +185,10 @@ class DreamerWorker:
         mean_steps = 0
         list_steps_done = []
         list_episode_strategy_duration = {"strategy_" + str(strat): [] for strat in self.controller.episode_strategy_duration.keys()}
-        for _ in range(n_episodes):
+        # save plot for a single episode:
+        random_ep = random.randint(0, n_episodes-1)
+        frames = []
+        for i in range(n_episodes):
             state = self._wrap(self.env.reset())
             steps_done = 0
             self.done = defaultdict(lambda: False)
@@ -193,6 +197,8 @@ class DreamerWorker:
                 neighbors_mask = self.env.find_neighbors()
                 groups = self.create_group(neighbors_mask)
                 actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
+                if i == random_ep and self.env.env_configs[0].ENV_TYPE == Env.GRIDWORLD:
+                    frames.append(np.moveaxis(self.env.env.env.render("rgb_array"),-1, 0))
                 next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
                 next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
                 neighbors_mask = (1. - neighbors_mask).clone().detach().bool()
@@ -262,8 +268,10 @@ class DreamerWorker:
             return {"idx": self.runner_handle,
                     "win_rate": win_rate if not return_all else list_win_rate,
                     "mean_steps": mean_steps if not return_all else list_steps_done,
+                    "frames": np.array(frames),
                     **strategy_duration}
         else:
             return {"idx": self.runner_handle,
                     "win_rate": win_rate if not return_all else list_win_rate,
-                    "mean_steps": mean_steps if not return_all else list_steps_done}
+                    "mean_steps": mean_steps if not return_all else list_steps_done,
+                    "frames": np.array(frames)}

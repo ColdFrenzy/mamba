@@ -8,6 +8,7 @@ from agent.workers.DreamerWorker import DreamerWorker
 
 class DreamerServer:
     """The server is the entity that manages the workers, it sends the model to the workers and collects the results.
+    It also run evaluation.
     """
     def __init__(self, n_workers, env_config, controller_config, model):
         # if local_mode=True it runs the workers in series instead of parallel
@@ -46,6 +47,7 @@ class DreamerServer:
     
 class DreamerServerEval:
     """The server is the entity that manages the workers, it sends the model to the workers and collects the results.
+    It loads weight and runs only the evaluation
     """
     def __init__(self, n_workers, env_config, controller_config, learner_config, model, n_episodes):
         # if local_mode=True it runs the workers in series instead of parallel
@@ -103,7 +105,11 @@ class DreamerRunner:
                 self.server.append_eval(info['idx'], self.learner.params(), 100)
                 info = self.server.eval()
                 if self.learner.use_wandb:
-                    wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint})
+                    if info["frames"].size > 0:
+                        video = info.pop("frames")
+                        wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint, "eval/video": wandb.Video(video, fps=4, format="mp4")})
+                    else:
+                        wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint})
                 # and save the model
                 torch.save(self.learner.params(), save_path)
                 self.current_checkpoint += self.learner.test_every

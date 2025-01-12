@@ -29,6 +29,8 @@ setup(
         "gymnasium~=1.0.0",
         "scikit-learn~=1.3.2",
         "umap-learn~=0.5.7",
+        "moviepy~=1.0.3",
+        "imageio~=2.26.1",
     ],  # Leave empty or add only internal requirements here
     include_package_data=True,
 )
