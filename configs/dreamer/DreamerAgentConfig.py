@@ -12,8 +12,9 @@ RSSM_STATE_MODE = 'discrete'
 class DreamerConfig(Config):
     def __init__(self):
         super().__init__()
-        self.USE_TEST_CONFIG = False # use a small config for testing
+        self.USE_TEST_CONFIG = True # use a small config for testing
         self.USE_TRAJECTORY_SYNTHESIZER = True
+        self.USE_GLOBAL_TRAJECTORY_SYNTHESIZER = True # use a global trajectory synthesizer
         self.USE_STRATEGY_SELECTOR = True
         self.USE_COMMUNICATION = True # learn communication and use it also in the imagination
         self.USE_STRATEGY_ADVANTAGE = False
@@ -54,8 +55,6 @@ class DreamerConfig(Config):
         self.DISCOUNT = 0.99
         self.DISCOUNT_LAMBDA = 0.95
         self.IN_DIM = 30
-        self.LOG_FOLDER = 'wandb/'
-        self.WEIGHTS_FOLDER = 'weights/'
 
 
 @dataclass

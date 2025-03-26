@@ -200,6 +200,7 @@ def rollout_policy_with_strategies(transition_model, neighbors_mask, av_action, 
             av_actions_with_strategies.append(torch.stack(av_actions, dim=0))
         next_states, actions, policies, av_actions = [], [], [], []
     
+    # Return size (n_strategies, time_steps, batch_size, num_agents, stoch+deter)
     return {"imag_states": stack_states(next_states_with_strategies, dim=0),
             "actions": torch.stack(actions_with_strategies, dim=0),
             "av_actions": torch.stack(av_actions_with_strategies, dim=0) if len(av_actions_with_strategies) > 0 else None,

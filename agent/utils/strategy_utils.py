@@ -4,6 +4,8 @@ from agent.optim.loss import actor_rollout
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import umap.umap_ as umap
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 def encode_strategy(strategy, n_strategies):
     """return a one hot encoding representation from a strategy index
@@ -117,6 +119,37 @@ def use_umap(tensor, labels):
     plt.ylabel('Dimension 2')
     plt.show()
 
+
+def annotate_render(image, strategy_number):
+    """
+    Annotates the rendered image with the strategy number on the top-left corner.
+    :param image: The RGB image output from the render function.
+    :param strategy_number: The strategy number to annotate on the image.
+    :return: Annotated image.
+    """
+
+    # Convert the image to a PIL Image
+    pil_image = Image.fromarray(image)
+
+    # Initialize drawing context
+    draw = ImageDraw.Draw(pil_image)
+
+    # Define font and text position
+    font_size = 40  # Increased font size
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except IOError:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+    text_position = (20, 20)  # Adjusted position for larger text
+    text = f"Strategy = {strategy_number}"
+
+    # Add text to the image
+    draw.text(text_position, text, fill="white", font=font)
+
+    # Convert back to numpy array
+    annotated_image = np.array(pil_image)
+
+    return annotated_image
 
 
 

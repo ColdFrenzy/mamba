@@ -1,9 +1,10 @@
 import ray
 import wandb
-from pathlib import Path
 import torch
 
 from agent.workers.DreamerWorker import DreamerWorker
+from agent.utils.paths import WEIGHTS_DIR
+from agent.utils.save_utils import save_full_config
 
 
 class DreamerServer:
@@ -67,17 +68,23 @@ class DreamerRunner:
     """
     Runner is the main entity that runs the training loop, it contains the learner and the server (which contains the workers).
     """
-    def __init__(self, env_config, learner_config, controller_config, n_workers):
+    def __init__(self, env_config, learner_config, controller_config, n_workers, random_seed=23):
         self.n_workers = n_workers
         self.learner = learner_config.create_learner()
+        self.controller_config = controller_config
         self.server = DreamerServer(n_workers, env_config, controller_config, self.learner.params())
         self.env_name = env_config.to_dict()["env_configs0_env_name"]
+        self.random_seed = random_seed
+
 
     def run(self, max_steps=10 ** 10, max_episodes=10 ** 10):
         cur_steps, cur_episode = 0, 0
         self.current_checkpoint = self.learner.test_every
-        Path(self.learner.config.WEIGHTS_FOLDER).mkdir(parents=True, exist_ok=True)
-        run_name = create_name(self.learner.config, self.env_name, max_steps)
+        run_name = create_run_name(self.learner.config, self.env_name, max_steps, random_seed=self.random_seed)
+        save_dir =  WEIGHTS_DIR / run_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        config_file_path = save_dir / "config.json"
+        save_full_config({"controller_config": self.controller_config , "learner_config": self.learner.config}, config_file_path)
         if self.learner.use_wandb:
             wandb.run.name = run_name
             wandb.define_metric("steps")
@@ -98,9 +105,8 @@ class DreamerRunner:
             print(cur_episode, self.learner.total_samples, info["reward"])
             
             if cur_steps >= self.current_checkpoint and cur_steps < max_steps:
-                current_name = create_name(self.learner.config, self.env_name, self.current_checkpoint)
-                save_file_name =  current_name + ".pt"
-                save_path = file_path = Path("wandb") / save_file_name
+                model_name = "model_" + str(self.current_checkpoint) + ".pt"
+                save_path = save_dir / model_name
                 # at the end of the training evaluate over 100 episodes
                 self.server.append_eval(info['idx'], self.learner.params(), 100)
                 info = self.server.eval()
@@ -110,15 +116,15 @@ class DreamerRunner:
                         wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint, "eval/video": wandb.Video(video, fps=4, format="mp4")})
                     else:
                         wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint})
-                # and save the model
+                
+                # and save the model and the episode
                 torch.save(self.learner.params(), save_path)
                 self.current_checkpoint += self.learner.test_every
 
 
             if cur_episode >= max_episodes or cur_steps >= max_steps:
-                current_name = create_name(self.learner.config, self.env_name, self.current_checkpoint)
-                save_file_name =  current_name + ".pt"
-                save_path = file_path = Path("wandb") / save_file_name
+                model_name = "model_" + str(max_steps) + ".pt"
+                save_path = save_dir / model_name
                 # at the end of the training evaluate over 100 episodes
                 self.server.append_eval(info['idx'], self.learner.params(), 100)
                 info = self.server.eval()
@@ -144,7 +150,7 @@ class DreamerEvaluator:
         """
         Load pre-trained model and run test
         """
-        run_name = create_name(self.learner_config, self.env_name, eval=True)
+        run_name = create_run_name(self.learner_config, self.env_name, eval=True)
         if self.learner_config.USE_WANDB:
             global wandb
             import wandb
@@ -176,7 +182,7 @@ class DreamerEvaluator:
 
 
 
-def create_name(config, env_name, max_steps=None, eval = False):
+def create_run_name(config, env_name, max_steps=None, eval = False, random_seed=23):
     """Return the name of the saving file based on the configuration.
     The name is composed as: "architecture_" + "env_name_" + "
     
@@ -193,6 +199,7 @@ def create_name(config, env_name, max_steps=None, eval = False):
         else:
             file_name = "MultiDreamer_"
     file_name = file_name + env_name
+    file_name = file_name + "_SEED=" + str(random_seed)
     if config.USE_SHARED_REWARD:
         file_name = file_name + "_SR"
     if config.USE_STRATEGY_ADVANTAGE:
@@ -205,7 +212,7 @@ def create_name(config, env_name, max_steps=None, eval = False):
         file_name = file_name + "_LSV"
     if max_steps is not None:
         file_name = file_name + "_" + abbreviate_number(max_steps)
-
+    
     return file_name
 
 

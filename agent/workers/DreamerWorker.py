@@ -121,6 +121,7 @@ class DreamerWorker:
             neighbors_mask = self.env.find_neighbors()
             groups = self.create_group(neighbors_mask)
             actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
+            # actions -> still = 0, left = 1, right = 2, forward = 3, pickup = 4
             next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
             next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
             neighbors_mask = (1. - neighbors_mask).clone().detach().bool()
@@ -152,8 +153,8 @@ class DreamerWorker:
                     self.controller.update_buffer(items)
                 break
 
-
-        reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+        if self.env_type == Env.STARCRAFT:
+            reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
         if self.controller.use_strategy_selector:
             strategy_duration = {}
             for strat in self.controller.episode_strategy_duration.keys():
@@ -176,6 +177,7 @@ class DreamerWorker:
         :param n_episodes: int, number of episodes to evaluate
         :param return_all: bool, if True return the metrics for each episode
         """
+        # TODO add a function that save frames for an episode
         self.controller.receive_params(dreamer_params)
         if learner_config is not None:
             dreamer_memory = DreamerMemory(learner_config.CAPACITY, learner_config.SEQ_LENGTH, learner_config.ACTION_SIZE, learner_config.IN_DIM, 2,
@@ -184,7 +186,8 @@ class DreamerWorker:
         list_win_rate = []
         mean_steps = 0
         list_steps_done = []
-        list_episode_strategy_duration = {"strategy_" + str(strat): [] for strat in self.controller.episode_strategy_duration.keys()}
+        if self.controller.use_strategy_selector:
+            list_episode_strategy_duration = {"strategy_" + str(strat): [] for strat in self.controller.episode_strategy_duration.keys()}
         # save plot for a single episode:
         random_ep = random.randint(0, n_episodes-1)
         frames = []
@@ -198,7 +201,9 @@ class DreamerWorker:
                 groups = self.create_group(neighbors_mask)
                 actions, obs, fakes, av_actions = self._select_actions(state, steps_done, groups, neighbors_mask)
                 if i == random_ep and self.env.env_configs[0].ENV_TYPE == Env.GRIDWORLD:
-                    frames.append(np.moveaxis(self.env.env.env.render("rgb_array"),-1, 0))
+                    frames.append(np.moveaxis(self.env.env.env.render(team_strategy=1, mode="rgb_array"),-1, 0)) # add .env for the gridworld
+                elif i == random_ep and self.env.env_configs[0].ENV_TYPE == Env.STARCRAFT:
+                    frames.append(np.moveaxis(self.env.env.render(team_strategy=1, mode="rgb_array"),-1, 0)) # 
                 next_state, reward, done, info = self.env.step([action.argmax() for i, action in enumerate(actions)])
                 next_state, reward, done = self._wrap(deepcopy(next_state)), self._wrap(deepcopy(reward)), self._wrap(deepcopy(done))
                 neighbors_mask = (1. - neighbors_mask).clone().detach().bool()
@@ -242,10 +247,12 @@ class DreamerWorker:
             win_rate += reward
             mean_steps += steps_done
             list_steps_done.append(steps_done)
-            for strat in self.controller.episode_strategy_duration.keys():
-                list_episode_strategy_duration["strategy_" + str(strat)].append(self.controller.episode_strategy_duration[strat]/sum(self.controller.episode_strategy_duration.values()))
-            if return_all:
-                self.controller.episode_strategy_duration = {strat: 0 for strat in self.controller.episode_strategy_duration.keys()}
+            if self.controller.use_strategy_selector:
+                for strat in self.controller.episode_strategy_duration.keys():
+                    list_episode_strategy_duration["strategy_" + str(strat)].append(self.controller.episode_strategy_duration[strat]/sum(self.controller.episode_strategy_duration.values()))
+                if return_all:
+                    self.controller.episode_strategy_duration = {strat: 0 for strat in self.controller.episode_strategy_duration.keys()}
+
         ###########################################################
         # GENERATE TRAJECTORIES FROM THE BUFFER FOR STRATEGY PLOT #
         ###########################################################

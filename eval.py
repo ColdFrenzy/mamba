@@ -2,6 +2,7 @@ import argparse
 import os
 
 from agent.runners.DreamerRunner import DreamerEvaluator
+from agent.utils.paths import  STARCRAFT_DIR, WEIGHTS_DIR
 from configs import Experiment, EvalExperiment, SimpleObservationConfig, NearRewardConfig, DeadlockPunishmentConfig, RewardsComposerConfig
 from configs.EnvConfigs import StarCraftConfig, EnvCurriculumConfig
 from configs.dreamer.DreamerControllerConfig import DreamerControllerConfig
@@ -46,8 +47,7 @@ if __name__ == "__main__":
     RANDOM_SEED = 23
     args = parse_args()
     if args.env == Env.STARCRAFT:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
+        os.environ["SC2PATH"] = STARCRAFT_DIR
         configs = prepare_starcraft_configs(args.env_name)
     else:
         raise Exception("Unknown environment")
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                                                     reward_config=configs["reward_config"]),
                      controller_config=configs["controller_config"],
                      learner_config=configs["learner_config"],
-                     weights_path=args.weights_path
+                     weights_path=WEIGHTS_DIR
                      )
 
     # load weights and model config

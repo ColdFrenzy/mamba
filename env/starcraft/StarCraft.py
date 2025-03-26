@@ -1,5 +1,6 @@
 from smac.env import StarCraft2Env
 import torch
+from agent.utils.strategy_utils import annotate_render
 
 class StarCraft:
 
@@ -49,8 +50,14 @@ class StarCraft:
         self.env.reset()
         return {i: obs for i, obs in enumerate(self.env.get_obs())}
 
-    def render(self):
+    def render(self, team_strategy=None, mode="human"):
+        if mode == "rgb_array":
+            img = self.env.render(mode=mode)
+            if team_strategy is not None:
+                return annotate_render(img, team_strategy)
+            return img
         self.env.render()
+        
 
     def close(self):
         self.env.close()

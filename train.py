@@ -3,6 +3,7 @@ import os
 import ray
 
 from agent.runners.DreamerRunner import DreamerRunner
+from agent.utils.paths import  STARCRAFT_DIR
 from configs import Experiment
 from configs.EnvConfigs import StarCraftConfig, EnvCurriculumConfig, GridWorldConfig
 
@@ -10,19 +11,24 @@ from configs.dreamer.DreamerControllerConfig import DreamerControllerConfig
 from configs.dreamer.DreamerLearnerConfig import DreamerLearnerConfig
 from environments import Env
 
-
+current_dir = os.path.dirname(os.path.abspath(__file__))
+os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
 ray.init(
     runtime_env={
-        "env_vars": {"RAY_DEBUG": "1"},
+        "env_vars": {"RAY_DEBUG": "1", "SC2PATH": os.environ["SC2PATH"]},
     }
 )
 # ray.init()
 
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default="gridworld", help='SMAC or GridWorld env')
-    parser.add_argument('--env_name', type=str, default="collect_game", help='Specific setting')
+    parser.add_argument('--env', type=str, default="starcraft", help='starcraft or GridWorld env')
+    parser.add_argument('--env_name', type=str, default="3m", help='Specific setting')
     parser.add_argument('--n_workers', type=int, default=1, help='Number of workers')
+    parser.add_argument('--continue_training', type=bool, default=False, help='Continue training')
+    parser.add_argument('--load_path', type=str, default=None, help='Path to load model')
     return parser.parse_args()
 
 
@@ -34,7 +40,7 @@ def train_dreamer(exp, n_workers):
 def get_env_info(configs, env):
     for config in configs:
         config.IN_DIM = env.n_obs
-        config.ACTION_SIZE = env.n_actions
+        config.ACTION_SIZE = int(env.n_actions)
     env.close()
 
 
@@ -59,13 +65,11 @@ def prepare_gridworld_configs(env_name):
             "reward_config": None,
             "obs_builder_config": None}
 
+def single_run(args, random_seed=23):
 
-if __name__ == "__main__":
-    RANDOM_SEED = 23
-    args = parse_args()
+    RANDOM_SEED = random_seed
+    args = args
     if args.env == Env.STARCRAFT:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
         configs = prepare_starcraft_configs(args.env_name)
     elif args.env == Env.GRIDWORLD:
         configs = prepare_gridworld_configs(args.env_name)
@@ -85,3 +89,8 @@ if __name__ == "__main__":
                      learner_config=configs["learner_config"])
 
     train_dreamer(exp, n_workers=args.n_workers)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    single_run(args, random_seed=23)
