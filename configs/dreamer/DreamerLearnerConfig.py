@@ -15,8 +15,8 @@ class DreamerLearnerConfig(DreamerConfig):
         self.EPOCHS = 1 if self.USE_TEST_CONFIG else 4 
         self.PPO_EPOCHS = 2 if self.USE_TEST_CONFIG else 5
         self.MODEL_BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 40
-        self.BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 20    # 40
-        self.SEQ_LENGTH = 7 if self.USE_TEST_CONFIG else 15     # 20
+        self.BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 40    # 40
+        self.SEQ_LENGTH = 7 if self.USE_TEST_CONFIG else 20     # 20
         self.N_SAMPLES = 1
         self.TARGET_UPDATE = 1
         self.DEVICE = 'cpu' # cuda

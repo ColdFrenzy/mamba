@@ -9,6 +9,7 @@ from configs.dreamer.DreamerControllerConfig import DreamerControllerConfig
 from configs.dreamer.DreamerLearnerConfig import DreamerLearnerConfig
 from environments import Env
 
+USE_RAY = False
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -19,8 +20,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def eval_dreamer(exp, n_workers):
-    runner = DreamerEvaluator(exp.env_config, exp.learner_config, exp.controller_config, n_workers, exp.weights_path, exp.episodes)
+def eval_dreamer(exp, n_workers, use_ray=True):
+    runner = DreamerEvaluator(exp.env_config, exp.learner_config, exp.controller_config, n_workers, exp.weights_path, exp.episodes, use_ray=use_ray)
     runner.run()
 
 
@@ -67,4 +68,4 @@ if __name__ == "__main__":
 
     # load weights and model config
     
-    eval_dreamer(exp, n_workers=args.n_workers)
+    eval_dreamer(exp, n_workers=args.n_workers, use_ray=USE_RAY)

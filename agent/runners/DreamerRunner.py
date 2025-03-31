@@ -2,7 +2,7 @@ import ray
 import wandb
 import torch
 
-from agent.workers.DreamerWorker import DreamerWorker
+from agent.workers.DreamerWorker import DreamerWorker, RayDreamerWorker
 from agent.utils.paths import WEIGHTS_DIR
 from agent.utils.save_utils import save_full_config
 
@@ -11,68 +11,97 @@ class DreamerServer:
     """The server is the entity that manages the workers, it sends the model to the workers and collects the results.
     It also run evaluation.
     """
-    def __init__(self, n_workers, env_config, controller_config, model):
+    def __init__(self, n_workers, env_config, controller_config, model, use_ray=True):
         # if local_mode=True it runs the workers in series instead of parallel
         # ray.init(local_mode=True)
         # ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "1"}})
 
-
-        self.workers = [DreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
-        self.tasks = [worker.run.remote(model) for worker in self.workers]
-        self.eval_tasks = []
+        self.use_ray = use_ray
+        if use_ray:
+            self.workers = [RayDreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
+            self.tasks = [worker.run.remote(model) for worker in self.workers]
+            self.eval_tasks = []
+        else:
+            # if not using ray, use just one worker
+            self.workers = [DreamerWorker(0, env_config, controller_config)]
+            self.tasks = []
+            self.eval_tasks = []
 
     def append(self, idx, update):
         """
         :param idx: worker index, 
         :param update: model weights used to update the workers"""
-        self.tasks.append(self.workers[idx].run.remote(update))
+        if self.use_ray:
+            self.tasks.append(self.workers[idx].run.remote(update))
+        else:
+            return self.workers[0].run(update)
 
     def append_eval(self, idx, update, n_episodes=100):
         """evaluate the model over n_episodes
         :param idx: worker index,
         :param update: model weights used to update the workers,
         """
-        self.eval_tasks.append(self.workers[idx].eval.remote(update, n_episodes))
+        if self.use_ray:
+            self.eval_tasks.append(self.workers[idx].eval.remote(update, n_episodes))
+        else:
+            return self.workers[0].eval(update, n_episodes)
 
     def run(self):
-        done_id, tasks = ray.wait(self.tasks)
-        self.tasks = tasks
-        recvs = ray.get(done_id)[0]
-        return recvs
+        if self.use_ray:
+            done_id, tasks = ray.wait(self.tasks)
+            self.tasks = tasks
+            recvs = ray.get(done_id)[0]
+            return recvs
+        else:
+            raise Exception("Task are already runned during the append when not using ray")
 
     def eval(self):
-        done_id, tasks = ray.wait(self.eval_tasks)
-        self.eval_tasks = tasks
-        recv = ray.get(done_id)[0]
-        return recv
+        if self.user_ray:
+            done_id, tasks = ray.wait(self.eval_tasks)
+            self.eval_tasks = tasks
+            recv = ray.get(done_id)[0]
+            return recv
+        else:
+            raise Exception("Task are already runned during the append when not using ray")
     
 class DreamerServerEval:
     """The server is the entity that manages the workers, it sends the model to the workers and collects the results.
     It loads weight and runs only the evaluation
     """
-    def __init__(self, n_workers, env_config, controller_config, learner_config, model, n_episodes):
+    def __init__(self, n_workers, env_config, controller_config, learner_config, model, n_episodes, use_ray=True):
         # if local_mode=True it runs the workers in series instead of parallel
         # ray.init(local_mode=True)
         # ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "1"}})
+        self.use_ray = use_ray
+        if self.use_ray:
+            self.workers = [RayDreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
+            self.eval_tasks = [worker.eval.remote(model, n_episodes, learner_config, return_all=True, return_strategy_plot=True) for worker in self.workers]
+        else:
+            # if not using ray, use just one worker
+            self.workers = [DreamerWorker(0, env_config, controller_config)]
+            self.eval_tasks = []
 
-        self.workers = [DreamerWorker.remote(i, env_config, controller_config) for i in range(n_workers)]
-        self.eval_tasks = [worker.eval.remote(model, n_episodes, learner_config, return_all=True, return_strategy_plot=True) for worker in self.workers]
+    def append_eval(self, learner_config, model, n_episodes):
+        return self.workers[0].eval(model, n_episodes, learner_config, return_all=True, return_strategy_plot=True)
 
     def eval(self):
-        done_id, tasks = ray.wait(self.eval_tasks)
-        self.eval_tasks = tasks
-        recv = ray.get(done_id)[0]
-        return recv
+        if self.use_ray:
+            done_id, tasks = ray.wait(self.eval_tasks)
+            self.eval_tasks = tasks
+            recv = ray.get(done_id)[0]
+            return recv
+        else:
+            raise Exception("Task are already runned during the append when not using ray")
 
 class DreamerRunner:
     """
     Runner is the main entity that runs the training loop, it contains the learner and the server (which contains the workers).
     """
-    def __init__(self, env_config, learner_config, controller_config, n_workers, random_seed=23):
+    def __init__(self, env_config, learner_config, controller_config, n_workers, random_seed=23, use_ray=True):
         self.n_workers = n_workers
         self.learner = learner_config.create_learner()
         self.controller_config = controller_config
-        self.server = DreamerServer(n_workers, env_config, controller_config, self.learner.params())
+        self.server = DreamerServer(n_workers, env_config, controller_config, self.learner.params(), use_ray=use_ray)
         self.env_name = env_config.to_dict()["env_configs0_env_name"]
         self.random_seed = random_seed
 
@@ -94,7 +123,10 @@ class DreamerRunner:
             wandb.define_metric("eval/mean_steps", step_metric="eval/eval_steps")
             wandb.run.tags = return_tags(self.learner.config, self.env_name, max_steps)
         while True:
-            rollout, info = self.server.run()
+            if self.server.use_ray:
+                rollout, info = self.server.run()
+            else:
+                rollout, info = self.server.append(0, self.learner.params())
             self.learner.step(rollout)
             cur_steps += info["steps_done"]
             strat = {k: v for k, v in info.items() if 'strategy_' in k}
@@ -108,8 +140,11 @@ class DreamerRunner:
                 model_name = "model_" + str(self.current_checkpoint) + ".pt"
                 save_path = save_dir / model_name
                 # at the end of the training evaluate over 100 episodes
-                self.server.append_eval(info['idx'], self.learner.params(), 100)
-                info = self.server.eval()
+                if self.server.use_ray:
+                    self.server.append_eval(info['idx'], self.learner.params(), 100)
+                    info = self.server.eval()
+                else:
+                    info = self.server.append_eval(0, self.learner.params(), 100)
                 if self.learner.use_wandb:
                     if info["frames"].size > 0:
                         video = info.pop("frames")
@@ -126,24 +161,29 @@ class DreamerRunner:
                 model_name = "model_" + str(max_steps) + ".pt"
                 save_path = save_dir / model_name
                 # at the end of the training evaluate over 100 episodes
-                self.server.append_eval(info['idx'], self.learner.params(), 100)
-                info = self.server.eval()
+                if self.server.use_ray:
+                    self.server.append_eval(info['idx'], self.learner.params(), 100)
+                    info = self.server.eval()
+                else:
+                    info = self.server.append_eval(0, self.learner.params(), 100)
                 if self.learner.use_wandb:
                     wandb.log({'eval/win_rate': info['win_rate'], 'eval/mean_steps': info['mean_steps'], 'eval/eval_steps': self.current_checkpoint})
                 # and save the model
                 torch.save(self.learner.params(), save_path)
                 break
-            self.server.append(info['idx'], self.learner.params())
+            if self.server.use_ray:
+                self.server.append(info['idx'], self.learner.params())
 
 
 
 class DreamerEvaluator:
-    def __init__(self, env_config, learner_config, controller_config, n_workers, weights_path, n_episodes):
+    def __init__(self, env_config, learner_config, controller_config, n_workers, weights_path, n_episodes, use_ray=True):
         self.n_workers = n_workers
         self.weights_path = weights_path
+        self.n_episodes = n_episodes
         self.learner_config = learner_config
         self.weights = torch.load(weights_path)
-        self.server = DreamerServerEval(n_workers, env_config, controller_config, learner_config, self.weights, n_episodes)
+        self.server = DreamerServerEval(n_workers, env_config, controller_config, learner_config, self.weights, n_episodes, use_ray=use_ray)
         self.env_name = env_config.to_dict()["env_configs0_env_name"]
 
     def run(self):
@@ -163,7 +203,10 @@ class DreamerEvaluator:
             # wandb.define_metric("eval/mean_steps", step_metric="eval/eval_steps")
             wandb.run.tags = return_tags(self.learner_config, self.env_name, eval=True)
         while True:
-            info = self.server.eval()
+            if self.server.use_ray:
+                info = self.server.eval()
+            else:
+                info = self.server.append_eval(self.learner_config, self.weights, self.n_episodes)
             strat = {k: v for k, v in info.items() if 'strategy_' in k}
 
             print("Evaluation finished")

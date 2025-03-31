@@ -12,7 +12,6 @@ from agent.memory.DreamerMemory import DreamerMemory
 from environments import Env
 
 
-@ray.remote
 class DreamerWorker:
     """
     The worker is the entity that interacts with the environment using the controller, the
@@ -282,3 +281,11 @@ class DreamerWorker:
                     "win_rate": win_rate if not return_all else list_win_rate,
                     "mean_steps": mean_steps if not return_all else list_steps_done,
                     "frames": np.array(frames)}
+
+@ray.remote
+class RayDreamerWorker(DreamerWorker):
+    """
+    same as DreamerWorker but for ray
+    """
+    def __init__(self, idx, env_config, controller_config):
+        super().__init__(idx, env_config, controller_config)

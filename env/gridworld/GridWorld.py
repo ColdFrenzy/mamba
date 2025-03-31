@@ -5,7 +5,7 @@ class GridWorld:
     def __init__(self, env_name):
         if env_name == "collect_game":
             env_config = {"size": 10, "num_balls" : [5], "agents_index" : [1,1,1], "balls_index":[1], "balls_reward":[10.0],
-                        "add_agent_id": False, "partial_obs": False, "normalize_obs": True, "max_steps": 1000 ,
+                        "add_agent_id": False, "partial_obs": False, "normalize_obs": True, "max_steps": 300 ,
                         "view_size":5, "reward_type": "individual", "increase_obs_size": 0,
                       
             }

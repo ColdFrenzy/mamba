@@ -11,29 +11,32 @@ from configs.dreamer.DreamerControllerConfig import DreamerControllerConfig
 from configs.dreamer.DreamerLearnerConfig import DreamerLearnerConfig
 from environments import Env
 
+
+USE_RAY = False
 current_dir = os.path.dirname(os.path.abspath(__file__))
 os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
-ray.init(
-    runtime_env={
-        "env_vars": {"RAY_DEBUG": "1", "SC2PATH": os.environ["SC2PATH"]},
-    }
-)
-# ray.init()
-
+# ray.init(
+#     runtime_env={
+#         "env_vars": {"RAY_DEBUG": "1", "SC2PATH": os.environ["SC2PATH"]},
+#     }
+# )
+# 5GB memory for each worker
+if USE_RAY:
+    ray.init(object_store_memory=5e9)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default="starcraft", help='starcraft or GridWorld env')
     parser.add_argument('--env_name', type=str, default="3m", help='Specific setting')
-    parser.add_argument('--n_workers', type=int, default=1, help='Number of workers')
+    parser.add_argument('--n_workers', type=int, default=2, help='Number of workers')
     parser.add_argument('--continue_training', type=bool, default=False, help='Continue training')
     parser.add_argument('--load_path', type=str, default=None, help='Path to load model')
     return parser.parse_args()
 
 
-def train_dreamer(exp, n_workers):
-    runner = DreamerRunner(exp.env_config, exp.learner_config, exp.controller_config, n_workers)
+def train_dreamer(exp, n_workers, use_ray=True):
+    runner = DreamerRunner(exp.env_config, exp.learner_config, exp.controller_config, n_workers, random_seed=exp.random_seed, use_ray=use_ray)
     runner.run(exp.steps, exp.episodes)
 
 
@@ -79,8 +82,8 @@ def single_run(args, random_seed=23):
     configs["learner_config"].ENV_TYPE = Env(args.env)
     configs["controller_config"].ENV_TYPE = Env(args.env)
 
-    exp = Experiment(steps= 10 ** 5,
-                     episodes=50,
+    exp = Experiment(steps= 100000,
+                     episodes= 5 if configs["learner_config"].USE_TEST_CONFIG else 50000,
                      random_seed=RANDOM_SEED,
                      env_config=EnvCurriculumConfig(*zip(configs["env_config"]), Env(args.env),
                                                     obs_builder_config=configs["obs_builder_config"],
@@ -88,9 +91,10 @@ def single_run(args, random_seed=23):
                      controller_config=configs["controller_config"],
                      learner_config=configs["learner_config"])
 
-    train_dreamer(exp, n_workers=args.n_workers)
+    train_dreamer(exp, n_workers=args.n_workers, use_ray=USE_RAY)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    single_run(args, random_seed=23)
+    for seed in [95, 247]:
+        single_run(args, random_seed=seed)
