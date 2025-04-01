@@ -32,8 +32,9 @@ class EnvCurriculum():
         pass
 
     def _reset(self):
-        if self._cur_env_episode == self.env_episodes[self._pos_env]:
-            self.env = self._start_next()
+        # if self._cur_env_episode == self.env_episodes[self._pos_env]:
+        #     self.env.close()
+        #     self.env = self._start_next()
         self._cur_env_episode += 1
         return self.env.reset()
 

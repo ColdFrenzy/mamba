@@ -6,7 +6,6 @@ import torch
 
 from agent.memory.DreamerMemory import DreamerMemory
 from agent.models.DreamerModel import DreamerModel
-from agent.utils.paths import LOG_DIR
 from agent.optim.loss import model_loss, actor_loss, value_loss, actor_rollout
 from agent.optim.utils import advantage, info_nce_loss
 from agent.utils.params import get_parameters
@@ -88,10 +87,6 @@ class DreamerLearner:
         self.total_samples = 0
         self.init_optimizers()
         self.n_agents = 2
-        if self.use_wandb:
-            global wandb
-            import wandb
-            wandb.init(dir=LOG_DIR, config=config.__dict__)
 
     def init_optimizers(self):
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)

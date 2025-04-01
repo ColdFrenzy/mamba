@@ -3,7 +3,7 @@ import wandb
 import torch
 
 from agent.workers.DreamerWorker import DreamerWorker, RayDreamerWorker
-from agent.utils.paths import WEIGHTS_DIR
+from agent.utils.paths import WEIGHTS_DIR, LOG_DIR
 from agent.utils.save_utils import save_full_config
 
 
@@ -112,6 +112,12 @@ class DreamerRunner:
         run_name = create_run_name(self.learner.config, self.env_name, max_steps, random_seed=self.random_seed)
         save_dir =  WEIGHTS_DIR / run_name
         save_dir.mkdir(parents=True, exist_ok=True)
+        if self.learner.use_wandb:
+            # if wandb is already open, let's close it
+            if wandb.run is not None:
+                wandb.finish()
+            wandb.init(project= "agree_before_acting_latest", dir=LOG_DIR, config=self.learner.config.__dict__)
+
         config_file_path = save_dir / "config.json"
         save_full_config({"controller_config": self.controller_config , "learner_config": self.learner.config}, config_file_path)
         if self.learner.use_wandb:
@@ -192,8 +198,6 @@ class DreamerEvaluator:
         """
         run_name = create_run_name(self.learner_config, self.env_name, eval=True)
         if self.learner_config.USE_WANDB:
-            global wandb
-            import wandb
             wandb.init(project= "mamba_eval", dir=self.learner_config.LOG_FOLDER, config=self.learner_config.__dict__)
 
         if self.learner_config.USE_WANDB:

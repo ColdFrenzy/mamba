@@ -12,7 +12,7 @@ from configs.dreamer.DreamerLearnerConfig import DreamerLearnerConfig
 from environments import Env
 
 
-USE_RAY = False
+USE_RAY = True
 current_dir = os.path.dirname(os.path.abspath(__file__))
 os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
 # ray.init(
@@ -22,7 +22,7 @@ os.environ["SC2PATH"] = os.path.join(current_dir,"env", "starcraft")
 # )
 # 5GB memory for each worker
 if USE_RAY:
-    ray.init(object_store_memory=5e9)
+    ray.init()
 
 
 def parse_args():
@@ -96,5 +96,5 @@ def single_run(args, random_seed=23):
 
 if __name__ == "__main__":
     args = parse_args()
-    for seed in [95, 247]:
+    for seed in [23, 95, 247]:
         single_run(args, random_seed=seed)
