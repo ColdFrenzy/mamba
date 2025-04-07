@@ -63,7 +63,12 @@ def batch_multi_agent(tensor, n_agents, use_strategies=False):
         return tensor.reshape(tensor.shape[0], -1, n_agents, tensor.shape[-1]) if tensor is not None else None
     else:
         return tensor.view(-1, n_agents, tensor.shape[-1]) if tensor is not None else None
-    
+
+def batch_multi_agent_horizon(tensor):
+    """return tensor of shape (n_strategies, horizon, batch*seq_len, n_agent*features)"""
+
+    return tensor.view(tensor.shape[0], tensor.shape[1], -1,  tensor.shape[-2]*tensor.shape[-1]) if tensor is not None else None    
+
 def batch_strat_horizon(tensor):
     """return tensor of shape (n_strategies, horizon, batch*seq_len*n_agents, features)"""
 
@@ -138,11 +143,12 @@ def info_nce_loss(traj_embed, temperature=0.07):
         
     :return loss: info_nce_loss loss.
     """
+    # labels[i] = 0 means the first entry in logits[i] is the positive
     strat_size = traj_embed.shape[0]
     batch_size = traj_embed.shape[1]
     # Normalize input embeddings along the feature dimension
     traj_embed = F.normalize(traj_embed, dim=-1)
-    
+
     # the elements coming from the same strategy can be considered as positive sample, 
     # The label matrix is a block-circulant matrix of size (batch*strategy, batch*strategy)
     # where each block is a block of ones with size batch x batch.
@@ -173,6 +179,7 @@ def info_nce_loss(traj_embed, temperature=0.07):
     logits = torch.cat([positive_samples, remaining_samples], dim=1)
     
     # Compute labels for NCE loss (positive sample has index 0)
+    # zero means that the positive sample is in the first column not that the label is 0 (different from standard one-hot encoding labels)
     labels = torch.zeros(batch_size*strat_size, dtype=torch.long).to(traj_embed.device)
     
     logits = logits / temperature
@@ -184,7 +191,13 @@ def info_nce_loss(traj_embed, temperature=0.07):
 
 
 def generate_label_submatrix(N):
-    """Given a number N, it generates a square matrix with 1s in the first element of the last row and 1s after the main diagonal in each row except the last one.
+    """Given a number N, it generates a square matrix with 1s in the first element 
+    of the last row and 1s after the main diagonal in each row except the last one.
+    example:
+    N = 3
+    [[0, 1, 0],
+     [0, 0, 1],
+     [1, 0, 0]]
     """
     matrix = [[0] * N for _ in range(N)]
 
@@ -195,3 +208,22 @@ def generate_label_submatrix(N):
     matrix[N-1][0] = 1
 
     return torch.tensor(matrix)
+
+# TODO: some implementation of the InfoNCE loss also includes double counting (symmetric elements (i,j) and (j,i))
+# this is redundant but as pro there are more positives and as cons more computational load
+# def generate_label_submatrix(N):
+#     """
+#     Generates a square matrix of shape (N, N) where:
+#     - Diagonal = 0 (exclude self-similarity)
+#     - All off-diagonal entries = 1 (all others in the group are positives)
+#     """
+#     matrix = torch.ones(N, N)
+#     matrix.fill_diagonal_(0)
+#     return matrix
+
+if __name__ == "__main__":
+    num_strategies = 3
+    batch_size = 4
+    # create a tensor of size num_strategies x batch_size x 2 with increasing integers as a float32 tensor
+    input_tensor = torch.arange(num_strategies * batch_size * 2, dtype=torch.float32).reshape(num_strategies, batch_size, 2)
+    loss_out = info_nce_loss(input_tensor)

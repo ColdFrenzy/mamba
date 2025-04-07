@@ -8,15 +8,19 @@ class TrajectorySynthesizerRNN(nn.Module):
     """Trajectory Synthesizer implemented through an LSTM network.
     """
     def __init__(
-        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, activation=nn.ELU, dropout=0.1, 
+        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, activation=nn.ELU, dropout=0.1, n_agents=None
         ):
         super().__init__()
         self.action_size = action_size
         self.deter_size = deter_size
         self.stoch_size = stoch_size
+        self.n_agents = n_agents
 
         self.horizon = horizon
-        self.embedding_size = deter_size + stoch_size + action_size
+        if self.n_agents is not None:
+            self.embedding_size = (deter_size + stoch_size + action_size)*n_agents
+        else:
+            self.embedding_size = deter_size + stoch_size + action_size
         # As in the transformer we keep the same dimension as output
         self.output_size = self.embedding_size
         self.act_fn = activation
@@ -31,6 +35,7 @@ class TrajectorySynthesizerRNN(nn.Module):
         model = [nn.LSTM(self.embedding_size, self.hidden, num_layers=self.n_layers,  batch_first=False, dropout=self.dropout, bidirectional=False)]
         model += [nn.Linear(self.hidden, self.output_size)]
         model += [self.act_fn()]
+        # model += [nn.Softmax(dim=-1)]
         return nn.Sequential(*model)
 
     def forward(self, model_state):

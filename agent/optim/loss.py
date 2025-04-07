@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.distributions as td
 
 from agent.optim.utils import rec_loss, compute_return, state_divergence_loss, calculate_ppo_loss, \
-    batch_multi_agent, log_prob_loss, info_loss, batch_strat_horizon
+    batch_multi_agent, log_prob_loss, info_loss, batch_strat_horizon, batch_multi_agent_horizon
 from agent.utils.params import FreezeParameters
 from networks.dreamer.rnns import rollout_representation, rollout_policy, rollout_policy_with_strategies
 
@@ -110,10 +110,14 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
                     items["av_actions"][:, :-1].detach() if items["av_actions"] is not None else None,
                     items["old_policy"][:, :-1].detach(), imag_feat[:, :-1].detach(), returns.detach()]
         else:
+            items["new_policy"] = items["actions"] + items["old_policy"] - items["old_policy"].detach()
             output = [items["actions"][:, :-1],
                     items["av_actions"][:, :-1] if items["av_actions"] is not None else None,
-                    items["old_policy"][:, :-1], imag_feat[:, :-1], returns]    
-            return [batch_strat_horizon(v) for v in output]     
+                    items["new_policy"][:, :-1], imag_feat[:, :-1], returns]    
+            if config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+                return [batch_multi_agent_horizon(v) for v in output]
+            else:
+                return [batch_strat_horizon(v) for v in output]     
     else:
         output = [items["actions"][:-1].detach(),
             items["av_actions"][:-1].detach() if items["av_actions"] is not None else None,

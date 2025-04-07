@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 import torch
+import wandb
 
 from agent.memory.DreamerMemory import DreamerMemory
 from agent.models.DreamerModel import DreamerModel
@@ -67,10 +68,8 @@ class DreamerLearner:
             self.critic = Critic(config.FEAT, config.HIDDEN).to(config.DEVICE)
         self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
         self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
-        if self.use_trajectory_synthesizer:
-            self.trajectory_synthesizer =  TrajectorySynthesizerRNN(config.ACTION_SIZE, config.DETERMINISTIC, config.STOCHASTIC, config.HORIZON,\
-                                                               config.TRAJECTORY_SYNTHESIZER_HIDDEN, config.TRAJECTORY_SYNTHESIZER_LAYERS).to(config.DEVICE)
-            initialize_weights(self.trajectory_synthesizer, mode='xavier')
+        self.use_global_trajectory_synthesizer = config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER
+        self.trajectory_synthesizer = None
         initialize_weights(self.model, mode='xavier')
         initialize_weights(self.actor)
         initialize_weights(self.critic, mode='xavier')
@@ -88,16 +87,27 @@ class DreamerLearner:
         self.init_optimizers()
         self.n_agents = 2
 
+    def init_trajectory_synthesizer(self, n_agents=None):
+        """Initialize the trajectory synthesizer
+        """
+        self.trajectory_synthesizer =  TrajectorySynthesizerRNN(self.config.ACTION_SIZE, self.config.DETERMINISTIC, self.config.STOCHASTIC,\
+                                                    self.config.HORIZON, self.config.TRAJECTORY_SYNTHESIZER_HIDDEN,\
+                                                    self.config.TRAJECTORY_SYNTHESIZER_LAYERS, n_agents=n_agents).to(self.config.DEVICE)
+        initialize_weights(self.trajectory_synthesizer, mode='xavier')
+        self.init_trajectory_synthesizer_optimizer()
+
+
     def init_optimizers(self):
         self.model_optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.MODEL_LR)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.ACTOR_LR, weight_decay=0.00001)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.VALUE_LR)
-        if self.use_trajectory_synthesizer:
+
+    def init_trajectory_synthesizer_optimizer(self):
             self.trajectory_synthesizer_list = [self.trajectory_synthesizer, self.actor]
             self.trajectory_synthesizer_optimizer = torch.optim.Adam(get_parameters(self.trajectory_synthesizer_list), lr=self.config.TRAJECTORY_SYNTHESIZER_LR)
 
     def params(self):
-        if self.use_trajectory_synthesizer:
+        if self.use_trajectory_synthesizer and self.trajectory_synthesizer is not None:
             return {'model': {k: v.cpu() for k, v in self.model.state_dict().items()},
                     'actor': {k: v.cpu() for k, v in self.actor.state_dict().items()},
                     'critic': {k: v.cpu() for k, v in self.critic.state_dict().items()},
@@ -130,7 +140,7 @@ class DreamerLearner:
             self.train_model(samples)
 
         for i in range(self.config.EPOCHS):
-            samples = self.replay_buffer.sample(self.config.BATCH_SIZE)
+            samples = self.replay_buffer.sample(self.config.BATCH_SIZE) # sample size = [seq_len, batch_size, n_agents, feat]
             self.train_agent(samples)
 
     def train_model(self, samples):
@@ -186,7 +196,7 @@ class DreamerLearner:
         # after updating the policy with the ppo routine, let's update the trajectory synthesizer
         if self.use_trajectory_synthesizer:
             # only old_policy requires grad
-            actions, av_actions, old_policy, imag_feat, returns = actor_rollout(samples['observation'],
+            actions, av_actions, actions_with_grad, imag_feat, returns = actor_rollout(samples['observation'],
                                                                     samples['action'],
                                                                     samples['last'], self.model,
                                                                     self.actor,
@@ -195,8 +205,9 @@ class DreamerLearner:
                                                                     self.config,
                                                                     samples['neighbors_mask'],
                                                                     detach_results=False)
-            trajectories = torch.cat([imag_feat, actions], dim=-1)
-            traj_embed = []
+            trajectories = torch.cat([imag_feat, actions_with_grad], dim=-1)
+            traj_embed = [] 
+            # imag_feat.size = [n_strategies, horizon-1, (seq_len-2)*batch_size, n_agents*(stoch_t+deter_t)]
             for traj in range(len(trajectories)):
                 traj_embed.append(self.trajectory_synthesizer(trajectories[traj]))
 

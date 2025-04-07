@@ -4,6 +4,7 @@ import ray
 
 from agent.runners.DreamerRunner import DreamerRunner
 from agent.utils.paths import  STARCRAFT_DIR
+from agent.utils.save_utils import load_full_config, ONLY_WM_EXCLUDED_KEYS
 from configs import Experiment
 from configs.EnvConfigs import StarCraftConfig, EnvCurriculumConfig, GridWorldConfig
 
@@ -31,7 +32,9 @@ def parse_args():
     parser.add_argument('--env_name', type=str, default="3m", help='Specific setting')
     parser.add_argument('--n_workers', type=int, default=2, help='Number of workers')
     parser.add_argument('--continue_training', type=bool, default=False, help='Continue training')
-    parser.add_argument('--load_path', type=str, default=None, help='Path to load model')
+    parser.add_argument('--load_path', type=str, default=None, help='Path to load the full model (agent + world model)')
+    parser.add_argument('--wm_path', type=str, default=None, help='Path to load only the world model')
+    parser.add_argument('--ac_path', type=str, default=None, help='Path to load only the actor-critic')
     return parser.parse_args()
 
 
@@ -78,6 +81,10 @@ def single_run(args, random_seed=23):
         configs = prepare_gridworld_configs(args.env_name)
     else:
         raise Exception("Unknown environment")
+    if args.wm_path is not None:
+        excluded_keys = ONLY_WM_EXCLUDED_KEYS
+        configs["learner_config"], configs["controller_config"] = load_full_config(configs, args.wm_path, excluded_keys)
+        configs["learner_config"].MODEL_EPOCHS = 0 # no training for the world model
     configs["env_config"][0].ENV_TYPE = Env(args.env)
     configs["learner_config"].ENV_TYPE = Env(args.env)
     configs["controller_config"].ENV_TYPE = Env(args.env)

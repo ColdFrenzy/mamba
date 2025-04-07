@@ -11,7 +11,6 @@ from networks.dreamer.critic import AugmentedCritic, Critic
 from agent.learners.DreamerLearner import initialize_weights
 from agent.utils.strategy_utils import encode_strategy
 from networks.dreamer.rnns import rollout_policy_with_strategies
-from networks.dreamer.trajectory_synthesizer import TrajectorySynthesizerRNN, TrajectorySynthesizerAtt
 
 
 
@@ -26,11 +25,6 @@ class DreamerController:
         self.use_augmented_critic = config.USE_AUGMENTED_CRITIC
         self.config = config
         self.use_last_state_value = config.USE_LAST_STATE_VALUE
-        self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
-        if self.use_trajectory_synthesizer:
-            self.trajectory_synthesizer =  TrajectorySynthesizerRNN(config.ACTION_SIZE, config.DETERMINISTIC, config.STOCHASTIC, config.HORIZON,\
-                                                               config.TRAJECTORY_SYNTHESIZER_HIDDEN, config.TRAJECTORY_SYNTHESIZER_LAYERS)
-            initialize_weights(self.trajectory_synthesizer, mode='xavier')
         if self.use_augmented_critic:
             self.critic = AugmentedCritic(config.FEAT, config.HIDDEN)
         else:
@@ -50,8 +44,7 @@ class DreamerController:
         self.model.load_state_dict(params['model'])
         self.actor.load_state_dict(params['actor'])
         self.critic.load_state_dict(params['critic'])
-        if self.use_trajectory_synthesizer:
-            self.trajectory_synthesizer.load_state_dict(params['trajectory_synthesizer'])
+
 
     def init_buffer(self):
         self.buffer = defaultdict(list)

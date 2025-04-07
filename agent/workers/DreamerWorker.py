@@ -154,6 +154,8 @@ class DreamerWorker:
 
         if self.env_type == Env.STARCRAFT:
             reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+        elif self.env_type == Env.GRIDWORLD:
+            reward = 1. if steps_done < self.env.max_time_steps else 0.
         if self.controller.use_strategy_selector:
             strategy_duration = {}
             for strat in self.controller.episode_strategy_duration.keys():
@@ -170,13 +172,12 @@ class DreamerWorker:
                                                    
     
     
-    def eval(self, dreamer_params, n_episodes, learner_config=None, return_all=False, return_strategy_plot=False):
+    def eval(self, dreamer_params, n_episodes, learner_config=None, return_all=False, return_strategy_plot=False, trajectory_synthesizer=None):
         """evaluate the controller over n_episodes
         :param dreamer_params: dict of parameters for the controller
         :param n_episodes: int, number of episodes to evaluate
         :param return_all: bool, if True return the metrics for each episode
         """
-        # TODO add a function that save frames for an episode
         self.controller.receive_params(dreamer_params)
         if learner_config is not None:
             dreamer_memory = DreamerMemory(learner_config.CAPACITY, learner_config.SEQ_LENGTH, learner_config.ACTION_SIZE, learner_config.IN_DIM, 2,
@@ -241,7 +242,10 @@ class DreamerWorker:
                 dreamer_memory.append(rollout['observation'], rollout['action'], rollout['reward'], rollout['done'],
                                     rollout['fake'], rollout['last'], rollout.get('avail_action'), rollout["neighbors_mask"])
             
-            reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+            if self.env_type == Env.STARCRAFT:
+                reward = 1. if 'battle_won' in info and info['battle_won'] else 0.
+            elif self.env_type == Env.GRIDWORLD:
+                reward = 1. if steps_done < self.env.max_time_steps else 0.
             list_win_rate.append(reward)
             win_rate += reward
             mean_steps += steps_done
@@ -255,10 +259,10 @@ class DreamerWorker:
         ###########################################################
         # GENERATE TRAJECTORIES FROM THE BUFFER FOR STRATEGY PLOT #
         ###########################################################
-        if return_strategy_plot and learner_config is not None:
+        if return_strategy_plot and learner_config is not None and trajectory_synthesizer is not None:
             samples = dreamer_memory.sample(learner_config.MODEL_BATCH_SIZE)
             with torch.no_grad():
-                generate_trajectories(samples, self.controller.model, self.controller.actor, self.controller.critic, self.controller.config, self.controller.trajectory_synthesizer, self.controller.config.USE_WANDB)
+                generate_trajectories(samples, self.controller.model, self.controller.actor, self.controller.critic, self.controller.config, trajectory_synthesizer, self.controller.config.USE_WANDB)
 
         win_rate = win_rate / n_episodes
         mean_steps = mean_steps / n_episodes
@@ -289,3 +293,6 @@ class RayDreamerWorker(DreamerWorker):
     """
     def __init__(self, idx, env_config, controller_config):
         super().__init__(idx, env_config, controller_config)
+    
+    def get_n_agents(self):
+        return self.env.n_agents

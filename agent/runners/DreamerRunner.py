@@ -56,7 +56,7 @@ class DreamerServer:
             raise Exception("Task are already runned during the append when not using ray")
 
     def eval(self):
-        if self.user_ray:
+        if self.use_ray:
             done_id, tasks = ray.wait(self.eval_tasks)
             self.eval_tasks = tasks
             recv = ray.get(done_id)[0]
@@ -104,7 +104,13 @@ class DreamerRunner:
         self.server = DreamerServer(n_workers, env_config, controller_config, self.learner.params(), use_ray=use_ray)
         self.env_name = env_config.to_dict()["env_configs0_env_name"]
         self.random_seed = random_seed
+        if use_ray:
+            self.n_agents = ray.get(self.server.workers[0].get_n_agents.remote())
+        else:
+            self.n_agents = self.server.workers[0].env.n_agents
 
+        if learner_config.USE_TRAJECTORY_SYNTHESIZER:
+            self.learner.init_trajectory_synthesizer(self.n_agents if learner_config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER else None)
 
     def run(self, max_steps=10 ** 10, max_episodes=10 ** 10):
         cur_steps, cur_episode = 0, 0
@@ -253,8 +259,10 @@ def create_run_name(config, env_name, max_steps=None, eval = False, random_seed=
         file_name = file_name + "_SA"
     if config.USE_AUGMENTED_CRITIC:
         file_name = file_name + "_AC"
-    if config.USE_TRAJECTORY_SYNTHESIZER:
+    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
         file_name = file_name + "_TS"
+    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+        file_name = file_name + "_GTS"
     if config.USE_LAST_STATE_VALUE:
         file_name = file_name + "_LSV"
     if max_steps is not None:
@@ -277,8 +285,10 @@ def return_tags(config, env_name, max_steps=None, eval=False):
         tags.append("SA")
     if config.USE_AUGMENTED_CRITIC:
         tags.append("AC")
-    if config.USE_TRAJECTORY_SYNTHESIZER:
+    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
         tags.append("TS")
+    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+        tags.append("GTS")
     if config.USE_LAST_STATE_VALUE:
         tags.append("LSV")
     if max_steps is not None:
