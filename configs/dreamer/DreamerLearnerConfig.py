@@ -15,16 +15,18 @@ class DreamerLearnerConfig(DreamerConfig):
         self.EPOCHS = 1 if self.USE_TEST_CONFIG else 4 
         self.PPO_EPOCHS = 2 if self.USE_TEST_CONFIG else 5
         self.MODEL_BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 40
-        self.BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 40    # 40
+        self.BATCH_SIZE = 15 if self.USE_TEST_CONFIG else 35    # 40
         self.SEQ_LENGTH = 7 if self.USE_TEST_CONFIG else 20     # 20
         self.N_SAMPLES = 1
         self.TARGET_UPDATE = 1
-        self.DEVICE = 'cpu' # cuda
+        self.DEVICE = 'cuda' # cuda
         self.GRAD_CLIP = 100.0
         self.ENTROPY = 0.001
         self.ENTROPY_ANNEALING = 0.99998
         self.GRAD_CLIP_POLICY = 100.0
         self.TRAJECTORY_SYNTHESIZER_SCALE = 0.1
+        self.TRAJECTORY_BATCH_SIZE = 2 if self.USE_TEST_CONFIG else 16
+        self.TRAJECTORY_SEQ_LENGTH = 2 if self.USE_TEST_CONFIG else 10
 
     def create_learner(self):
         return DreamerLearner(self)

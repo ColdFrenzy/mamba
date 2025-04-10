@@ -18,7 +18,7 @@ def encode_strategy(strategy, n_strategies):
         strategy_encoded[i, strategy[i]-1] = 1
     return strategy_encoded
 
-def generate_trajectory_scatterplot(embed_traj):
+def generate_trajectory_scatterplot(embed_traj, red_type='tsne'):
     """
     Given multiple trajectories generated from different strategies and embedded in a lower dimensional space, this function returns 
     an image that represents their distribution in a 2D space (by picking the first two features).
@@ -26,17 +26,27 @@ def generate_trajectory_scatterplot(embed_traj):
     :params embed_traj: [num_strategies, embed_dim] 
     :return traj_img: pyplot image
     """
-    reduced_embed_traj = embed_traj[:,:,:2].detach().clone().cpu()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for i in range(reduced_embed_traj.shape[0]):
-        ax.scatter(reduced_embed_traj[i, :, 0], reduced_embed_traj[i, :, 1], label=f'Strategy {i}')
-    plt.title('Trajectories scatterplot in 2D Space')
-    plt.legend()
 
-    # gcf gets the current figure
-    traj_img = plt.gcf()
-    
-    plt.close(fig)
+    if red_type == 'tsne':
+        traj_embed = embed_traj.detach().clone().cpu()
+        reshaped_traj_embed = traj_embed.reshape(-1, traj_embed.shape[-1])
+
+        labels = torch.zeros(reshaped_traj_embed.shape[0])
+        for i in range(traj_embed.shape[0]):
+            labels[i*reshaped_traj_embed.shape[0]//traj_embed.shape[0]:(i+1)*reshaped_traj_embed.shape[0]//traj_embed.shape[0]] = i
+        traj_img = use_tsne(reshaped_traj_embed, labels)
+    elif red_type == 'first_two':
+        reduced_embed_traj = embed_traj[:,:,:2].detach().clone().cpu()
+        fig, ax = plt.subplots(figsize=(8, 6))
+        for i in range(reduced_embed_traj.shape[0]):
+            ax.scatter(reduced_embed_traj[i, :, 0], reduced_embed_traj[i, :, 1], label=f'Strategy {i}')
+        plt.title('Trajectories scatterplot in 2D Space')
+        plt.legend()
+
+        # gcf gets the current figure
+        traj_img = plt.gcf()
+        
+        plt.close(fig)
 
     return traj_img
 
@@ -94,20 +104,21 @@ def use_pca(tensor, labels):
     plt.xlabel('Principal Component 1')
     plt.ylabel('Principal Component 2')
     plt.show()
+    return 
 
 
 
 def use_tsne(tensor, labels):
     tsne = TSNE(n_components=2, perplexity=30, n_iter=300)
     tsne_result = tsne.fit_transform(tensor)
-    plt.figure(figsize=(8,6))
-    scatter = plt.scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
-    plt.colorbar(scatter, label='Classes')
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
     plt.title('t-SNE of Contrastive Learning Results')
-    plt.xlabel('Dimension 1')
-    plt.ylabel('Dimension 2')
-    plt.show()
-
+    plt.legend(loc='upper right')
+    traj_img = plt.gcf()
+        
+    plt.close(fig)
+    return traj_img
 
 def use_umap(tensor, labels):
     umap_result = umap.UMAP(n_components=2).fit_transform(tensor)
@@ -139,7 +150,8 @@ def annotate_render(image, strategy_number):
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
     except IOError:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        font = ImageFont.load_default()
+        # font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
     text_position = (20, 20)  # Adjusted position for larger text
     text = f"Strategy = {strategy_number}"
 

@@ -31,24 +31,53 @@ class TrajectorySynthesizerRNN(nn.Module):
         self.model = self._build_model()
 
     def _build_model(self):
+        # implementation with LSTM, more efficient but memory intensive
+        # model = [nn.LSTM(self.embedding_size, self.hidden, num_layers=self.n_layers,  batch_first=False, dropout=self.dropout, bidirectional=False)]
+        # Implementation with LSTMCell, less efficient but less memory intensive
+        model = []
+        for _ in range(self.n_layers):
+            # Initialize an LSTMCell for each layer
+            model.append(nn.LSTMCell(self.embedding_size if _ == 0 else self.hidden, self.hidden))
 
-        model = [nn.LSTM(self.embedding_size, self.hidden, num_layers=self.n_layers,  batch_first=False, dropout=self.dropout, bidirectional=False)]
-        model += [nn.Linear(self.hidden, self.output_size)]
-        model += [self.act_fn()]
-        # model += [nn.Softmax(dim=-1)]
+        model.append(nn.Linear(self.hidden, self.output_size))
+        model.append(self.act_fn())
+        # model.append(nn.Softmax(dim=-1))
         return nn.Sequential(*model)
 
+    # def forward(self, model_state):
+    #     """        
+    #     LSTM expects input of shape (seq_len, batch_size, input_size) and outputs a tuple (seq_len, batch_size, hidden_size)
+    #     :params model_state: tensor of shape (horizon, seq_len*batch_size, num_agents, deter_size + stoch_size + action_size)
+    #     :return output: tensor of shape (seq_len*batch_size, deter_size + stoch_size + action_size)
+    #     """
+    #     output, (h_n, c_n) = self.model[0](model_state)
+    #     # last element of the output contains info about all the sequence
+    #     output = self.model[1:](output[-1])
+    #     return output
     def forward(self, model_state):
-        """        
-        LSTM expects input of shape (seq_len, batch_size, input_size) and outputs a tuple (seq_len, batch_size, hidden_size)
-        :params model_state: tensor of shape (horizon, seq_len*batch_size, num_agents, deter_size + stoch_size + action_size)
-        :return output: tensor of shape (seq_len*batch_size, deter_size + stoch_size + action_size)
         """
-        output, (h_n, c_n) = self.model[0](model_state)
-        # last element of the output contains info about all the sequence
-        output = self.model[1:](output[-1])
-        return output
+        LSTMCell expects input of shape (seq_len, batch_size, input_size).
+        Model state is of shape (horizon, batch_size, num_agents, deter_size + stoch_size + action_size)
+        """
+        batch_size = model_state.size(1)
+        h_t = torch.zeros(batch_size, self.hidden).to(model_state.device)  # Initialize hidden state
+        c_t = torch.zeros(batch_size, self.hidden).to(model_state.device)  # Initialize cell state
+        horizon = model_state.size(0)
+        # Process each time step
+        for t in range(horizon):
+            # Get the input for the current time step
+            input_t = model_state[t]  # Shape: (batch_size, num_agents, embedding_size)
 
+            # Iterate through all LSTM layers (for stacked LSTMs)
+            for lstm_cell in self.model[:-2]:
+                h_t, c_t = lstm_cell(input_t.view(batch_size, -1), (h_t, c_t))
+                input_t = h_t  # Pass hidden state to the next LSTMCell as input
+
+        # After processing all time steps, pass the final hidden state through the final linear layer
+        output = self.model[-2](h_t)  # Linear layer
+        output = self.model[-1](output)  # Activation function
+
+        return output
 
 class TrajectorySynthesizerAtt(nn.Module):
     """Trajectory Synthesizer implemented through a Transformer network.

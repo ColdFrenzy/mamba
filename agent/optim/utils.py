@@ -134,7 +134,7 @@ def state_divergence_loss(prior, posterior, config, reduce=True, balance=0.2):
 
 
 
-def info_nce_loss(traj_embed, temperature=0.07):
+def info_nce_loss(traj_embed, temperature=0.1, multiple_positives=True, num_of_batches=16, seq_len= 10):
     """
     info_nce_loss function for contrastive learning without explicit labels.
     
@@ -170,60 +170,85 @@ def info_nce_loss(traj_embed, temperature=0.07):
     positive_samples = []
     remaining_samples = []
     for strat in range(strat_size):
-        positive_samples.append(sim_matrix[strat*batch_size:(strat+1)*batch_size, strat*batch_size:(strat+1)*batch_size][label_submatrix.to(bool)])
+        if multiple_positives:
+            positive_samples.append(sim_matrix[strat*batch_size:(strat+1)*batch_size, strat*batch_size:(strat+1)*batch_size][label_submatrix.to(bool)].reshape(batch_size, -1))
+        else:
+            positive_samples.append(sim_matrix[strat*batch_size:(strat+1)*batch_size, strat*batch_size:(strat+1)*batch_size][label_submatrix.to(bool)])
         remaining_samples.append(torch.cat([sim_matrix[strat*batch_size:(strat+1)*batch_size, :strat*batch_size], sim_matrix[strat*batch_size:(strat+1)*batch_size, (strat+1)*batch_size:]], dim=-1))
-    positive_samples = torch.cat(positive_samples, dim=0).unsqueeze(-1)
+    if multiple_positives:
+        positive_samples = torch.cat(positive_samples, dim=0)
+    else:
+        positive_samples = torch.cat(positive_samples, dim=0).unsqueeze(-1)
     remaining_samples = torch.cat(remaining_samples, dim=0)
 
+    num_of_batches = num_of_batches
+    if multiple_positives:
+        loss = 0.0
+        # Samples batches of positive and negative samples
+        for i in range (num_of_batches):
+            # Randomly sample a batch of positive samples
+            indp1 = torch.randint(0, positive_samples.shape[0], (batch_size,))
+            indp2 = torch.randint(0, positive_samples.shape[1], (batch_size,))
+            new_positive_samples = positive_samples[indp1, indp2].unsqueeze(1)
+            # Randomly sample a batch of negative samples
+            indn1 = torch.randint(0, remaining_samples.shape[0], (batch_size,))
+            indn2 = torch.randint(0, remaining_samples.shape[1], (batch_size,batch_size))
+            new_remaining_samples = remaining_samples[indn1[:, None], indn2]
+            # Concatenate the two batches
+            logits = torch.cat([new_positive_samples, new_remaining_samples], dim=1)
+            logits = logits / temperature
+            labels = torch.zeros(batch_size, dtype=torch.long).to(traj_embed.device)
+            loss += F.cross_entropy(logits, labels)
     # Concatenate positive and negative similarities
-    logits = torch.cat([positive_samples, remaining_samples], dim=1)
-    
-    # Compute labels for NCE loss (positive sample has index 0)
-    # zero means that the positive sample is in the first column not that the label is 0 (different from standard one-hot encoding labels)
-    labels = torch.zeros(batch_size*strat_size, dtype=torch.long).to(traj_embed.device)
-    
-    logits = logits / temperature
-    
-    # Compute info_nce_loss using cross-entropy
-    loss = F.cross_entropy(logits, labels)
+    else:
+        logits = torch.cat([positive_samples, remaining_samples], dim=1)
+        # Compute labels for NCE loss (positive sample has index 0)
+        # zero means that the positive sample is in the first column not that the label is 0 (different from standard one-hot encoding labels)
+        labels = torch.zeros(batch_size*strat_size, dtype=torch.long).to(traj_embed.device)
+        
+        logits = logits / temperature
+        
+        # Compute info_nce_loss using cross-entropy
+        loss = F.cross_entropy(logits, labels)
     
     return loss
 
 
-def generate_label_submatrix(N):
-    """Given a number N, it generates a square matrix with 1s in the first element 
-    of the last row and 1s after the main diagonal in each row except the last one.
-    example:
-    N = 3
-    [[0, 1, 0],
-     [0, 0, 1],
-     [1, 0, 0]]
-    """
-    matrix = [[0] * N for _ in range(N)]
-
-    for i in range(N - 1):
-        matrix[i][i+1] = 1  # Set 1 after the main diagonal in each row except the last one
-    
-    # Set 1 in the first element of the last row
-    matrix[N-1][0] = 1
-
-    return torch.tensor(matrix)
-
-# TODO: some implementation of the InfoNCE loss also includes double counting (symmetric elements (i,j) and (j,i))
-# this is redundant but as pro there are more positives and as cons more computational load
 # def generate_label_submatrix(N):
+#     """Given a number N, it generates a square matrix with 1s in the first element 
+#     of the last row and 1s after the main diagonal in each row except the last one.
+#     example:
+#     N = 3
+#     [[0, 1, 0],
+#      [0, 0, 1],
+#      [1, 0, 0]]
 #     """
-#     Generates a square matrix of shape (N, N) where:
-#     - Diagonal = 0 (exclude self-similarity)
-#     - All off-diagonal entries = 1 (all others in the group are positives)
-#     """
-#     matrix = torch.ones(N, N)
-#     matrix.fill_diagonal_(0)
-#     return matrix
+#     matrix = [[0] * N for _ in range(N)]
+
+#     for i in range(N - 1):
+#         matrix[i][i+1] = 1  # Set 1 after the main diagonal in each row except the last one
+    
+#     # Set 1 in the first element of the last row
+#     matrix[N-1][0] = 1
+
+#     return torch.tensor(matrix)
+
+# some implementation of the InfoNCE loss also includes double counting (symmetric elements (i,j) and (j,i))
+# this is redundant but as pro there are more positives and as cons more computational load
+def generate_label_submatrix(N):
+    """
+    Generates a square matrix of shape (N, N) where:
+    - Diagonal = 0 (exclude self-similarity)
+    - All off-diagonal entries = 1 (all others in the group are positives)
+    """
+    matrix = torch.ones((N, N), dtype=torch.long)
+    matrix.fill_diagonal_(0)
+    return matrix
 
 if __name__ == "__main__":
-    num_strategies = 3
-    batch_size = 4
+    num_strategies = 4
+    batch_size = 630
     # create a tensor of size num_strategies x batch_size x 2 with increasing integers as a float32 tensor
     input_tensor = torch.arange(num_strategies * batch_size * 2, dtype=torch.float32).reshape(num_strategies, batch_size, 2)
     loss_out = info_nce_loss(input_tensor)
+    print(loss_out)

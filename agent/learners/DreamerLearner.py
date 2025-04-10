@@ -212,10 +212,10 @@ class DreamerLearner:
                 traj_embed.append(self.trajectory_synthesizer(trajectories[traj]))
 
             traj_embed = torch.stack(traj_embed, dim=0)
-            traj_embed_fig = generate_trajectory_scatterplot(traj_embed)
+            traj_embed_fig = generate_trajectory_scatterplot(traj_embed, red_type="tsne")
             if self.use_wandb and np.random.randint(100) == 9:
                 wandb.log({'Plots/Trajectory_Embeddings': wandb.Image(traj_embed_fig)})
-            ts_loss = info_nce_loss(traj_embed) * self.trajectory_synthesizer_scale
+            ts_loss = info_nce_loss(traj_embed, batch_size=self.config.TRAJECTORY_BATCH_SIZE, seq_len= self.config.TRAJECTORY_SEQ_LENGTH) * self.trajectory_synthesizer_scale
             self.apply_optimizer(self.trajectory_synthesizer_optimizer, self.trajectory_synthesizer_list, ts_loss, self.config.GRAD_CLIP)
             if self.use_wandb:
                 wandb.log({'Agent/ts_loss': ts_loss.mean()})
