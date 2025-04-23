@@ -65,15 +65,14 @@ def batch_multi_agent(tensor, n_agents, use_strategies=False):
         return tensor.view(-1, n_agents, tensor.shape[-1]) if tensor is not None else None
 
 def batch_multi_agent_horizon(tensor):
-    """return tensor of shape (n_strategies, horizon, batch*seq_len, n_agent*features)"""
+    """return tensor of shape (n_strategies, horizon, batch*seq_len, n_agent*features) used for global_trajectory_synthesizer"""
 
     return tensor.view(tensor.shape[0], tensor.shape[1], -1,  tensor.shape[-2]*tensor.shape[-1]) if tensor is not None else None    
 
 def batch_strat_horizon(tensor):
-    """return tensor of shape (n_strategies, horizon, batch*seq_len*n_agents, features)"""
+    """return tensor of shape (n_strategies, horizon, batch*seq_len*n_agents, features) used for normal trajectory_synthesizer"""
 
     return tensor.view(tensor.shape[0], tensor.shape[1], -1, tensor.shape[-1]) if tensor is not None else None
-
 
 def compute_return(reward, value, discount, bootstrap, lmbda, gamma, use_strategy_selector=False):
     if use_strategy_selector:
@@ -97,9 +96,24 @@ def compute_return(reward, value, discount, bootstrap, lmbda, gamma, use_strateg
 
 
 def info_loss(feat, model, actions, fake):
+    """loss function for maximizing InfoMax over the actions
+    :param feat: features of the state
+    :param model: model used to compute the action logits
+    :param actions: actions taken by the agent
+    :param fake: mask for the batch
+    :return: loss value
+    """
     q_feat = F.relu(model.q_features(feat))
     action_logits = model.q_action(q_feat)
     return (fake * action_information_loss(action_logits, actions)).mean()
+
+def info_loss_strategy(feat, model):
+    """loss function for maximizing InfoMax over the different strategies
+
+    """
+    labels = torch.arange(feat.shape[0], device=feat.device).repeat_interleave(feat.shape[1]).unsqueeze(1)
+    predicted = model(feat.reshape(-1, feat.shape[-1]))
+    return action_information_loss(predicted.base_dist.logits, labels).mean()
 
 
 def action_information_loss(logits, target):
@@ -214,36 +228,36 @@ def info_nce_loss(traj_embed, temperature=0.1, multiple_positives=True, num_of_b
     return loss
 
 
-# def generate_label_submatrix(N):
-#     """Given a number N, it generates a square matrix with 1s in the first element 
-#     of the last row and 1s after the main diagonal in each row except the last one.
-#     example:
-#     N = 3
-#     [[0, 1, 0],
-#      [0, 0, 1],
-#      [1, 0, 0]]
-#     """
-#     matrix = [[0] * N for _ in range(N)]
+def generate_label_submatrix(N):
+    """Given a number N, it generates a square matrix with 1s in the first element 
+    of the last row and 1s after the main diagonal in each row except the last one.
+    example:
+    N = 3
+    [[0, 1, 0],
+     [0, 0, 1],
+     [1, 0, 0]]
+    """
+    matrix = [[0] * N for _ in range(N)]
 
-#     for i in range(N - 1):
-#         matrix[i][i+1] = 1  # Set 1 after the main diagonal in each row except the last one
+    for i in range(N - 1):
+        matrix[i][i+1] = 1  # Set 1 after the main diagonal in each row except the last one
     
-#     # Set 1 in the first element of the last row
-#     matrix[N-1][0] = 1
+    # Set 1 in the first element of the last row
+    matrix[N-1][0] = 1
 
-#     return torch.tensor(matrix)
+    return torch.tensor(matrix)
 
 # some implementation of the InfoNCE loss also includes double counting (symmetric elements (i,j) and (j,i))
 # this is redundant but as pro there are more positives and as cons more computational load
-def generate_label_submatrix(N):
-    """
-    Generates a square matrix of shape (N, N) where:
-    - Diagonal = 0 (exclude self-similarity)
-    - All off-diagonal entries = 1 (all others in the group are positives)
-    """
-    matrix = torch.ones((N, N), dtype=torch.long)
-    matrix.fill_diagonal_(0)
-    return matrix
+# def generate_label_submatrix(N):
+#     """
+#     Generates a square matrix of shape (N, N) where:
+#     - Diagonal = 0 (exclude self-similarity)
+#     - All off-diagonal entries = 1 (all others in the group are positives)
+#     """
+#     matrix = torch.ones((N, N), dtype=torch.long)
+#     matrix.fill_diagonal_(0)
+#     return matrix
 
 if __name__ == "__main__":
     num_strategies = 4

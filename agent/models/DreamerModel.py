@@ -26,6 +26,8 @@ class DreamerModel(nn.Module):
         else:
             self.av_action = None
 
+        # The following two models are used sequentially to compute probability over action given 
+        # the features from the second-last layer of the Observation_Decoder
         self.q_features = DenseModel(config.HIDDEN, config.PCONT_HIDDEN, 1, config.PCONT_HIDDEN)
         self.q_action = nn.Linear(config.PCONT_HIDDEN, config.ACTION_SIZE)
 

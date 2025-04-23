@@ -89,7 +89,7 @@ def single_run(args, random_seed=23):
     configs["learner_config"].ENV_TYPE = Env(args.env)
     configs["controller_config"].ENV_TYPE = Env(args.env)
 
-    exp = Experiment(steps= 100000,
+    exp = Experiment(steps= 100 if configs["learner_config"].USE_TEST_CONFIG else 100000,
                      episodes= 5 if configs["learner_config"].USE_TEST_CONFIG else 50000,
                      random_seed=RANDOM_SEED,
                      env_config=EnvCurriculumConfig(*zip(configs["env_config"]), Env(args.env),

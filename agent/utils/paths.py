@@ -7,3 +7,5 @@ WEIGHTS_DIR.mkdir(exist_ok=True, parents=True)
 STARCRAFT_DIR = ROOT_DIR / "env" / "starcraft"
 LOG_DIR = ROOT_DIR / "wandb" # create if not exists
 LOG_DIR.mkdir(exist_ok=True, parents=True)
+PLOT_DIR = ROOT_DIR / "plots" # create if not exists
+PLOT_DIR.mkdir(exist_ok=True, parents=True)

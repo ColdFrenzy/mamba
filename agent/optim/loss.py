@@ -65,7 +65,7 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     return model_loss
 
 
-def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True):
+def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True, indices=None):
     """rollout the actor and the critic in the imagination
     :param obs: The observations, shape (time_steps, batch_size, n_agents, obs_size)
     :param action: The actions, shape (time_steps, batch_size, n_agents, action_size)
@@ -76,6 +76,7 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
     :param config: The config
     :param neighbors_mask: The neighbors mask, shape (time_steps, batch_size, n_agents, n_agents)
     :param detach_results: Whether to detach the results
+    :param indices: The indices to use for the rollout (instead of using all the batch, similar to a minibatch)
     """
     n_agents = obs.shape[2]
     with FreezeParameters([model]):
@@ -90,13 +91,16 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
         post = post.map(lambda x: x.reshape((obs.shape[0] - 1) * obs.shape[1], n_agents, -1)) # stoch [720, 3, 1024]
         if config.USE_STRATEGY_SELECTOR:
             nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
+            if indices is not None:
+                nn_mask = nn_mask[indices]
+                post = post.map(lambda x: x[indices])
             nn_mask = nn_mask.repeat(8,1,1).detach()
             items = rollout_policy_with_strategies(model.transition, nn_mask, model.av_action, config.HORIZON, actor, post, config.N_STRATEGIES)
         else:
             nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
             nn_mask = nn_mask.repeat(8,1,1).detach()
             items = rollout_policy(model.transition, model.av_action, config.HORIZON, actor, post, neighbors_mask=nn_mask)
-    imag_feat = items["imag_states"].get_features() # [n_strategies, horizon, seq_len*batch_size, stoch_t, deter_t]
+    imag_feat = items["imag_states"].get_features() # [n_strategies, horizon, seq_len*batch_size, stoch_t + deter_t]
     if config.USE_STRATEGY_SELECTOR:
         imag_rew_feat = torch.cat([items["imag_states"].stoch[:,:-1], items["imag_states"].deter[:, 1:]], -1) # [stoch_t, deter_t+1]
     else:
@@ -109,6 +113,7 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
             output = [items["actions"][:, :-1].detach(),
                     items["av_actions"][:, :-1].detach() if items["av_actions"] is not None else None,
                     items["old_policy"][:, :-1].detach(), imag_feat[:, :-1].detach(), returns.detach()]
+            # return output # return [n_strategies, horizon, batch*seq_len, n_agent*features]
         else:
             items["new_policy"] = items["actions"] + items["old_policy"] - items["old_policy"].detach()
             output = [items["actions"][:, :-1],
@@ -122,7 +127,7 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
         output = [items["actions"][:-1].detach(),
             items["av_actions"][:-1].detach() if items["av_actions"] is not None else None,
             items["old_policy"][:-1].detach(), imag_feat[:-1].detach(), returns.detach()]
-    return [batch_multi_agent(v, n_agents, config.USE_STRATEGY_SELECTOR) for v in output]
+    return [batch_multi_agent(v, n_agents, config.USE_STRATEGY_SELECTOR) for v in output] # return [n_strategies, batch*seq_len*horizon, n_agents, features]
 
 
 def critic_rollout(model, critic, states, rew_states, actions, raw_states, config):
@@ -170,6 +175,17 @@ def calculate_next_reward(model, actions, states):
 
 
 def actor_loss(imag_states, actions, av_actions, old_policy, advantage, actor, ent_weight, config):
+    """
+    Compute the actor loss
+    :param imag_states: The imagined states requires_grad=False, shape (n_strat-1, 2000, n_agents, feat_size) if use_strategy_selector else (2000, n_agents, feat_size)
+    :param actions: The actions requires_grad=False, shape (n_strat-1, 2000, n_agents, action_size) if use_strategy_selector else (2000, n_agents, action_size)
+    :param av_actions: The available actions requires_grad=False, shape (n_strat-1, 2000, n_agents, action_size) if use_strategy_selector else (2000, n_agents, action_size)
+    :param old_policy: The old policy requires_grad=False, shape (n_strat-1, 2000, n_agents, action_size) if use_strategy_selector else (2000, n_agents, action_size)
+    :param advantage: The advantage requires_grad=False, shape (n_strat-1, 2000, n_agents,1) if use_strategy_selector else (2000, n_agents,1)
+    :param actor: The actor model
+    :param ent_weight: The entropy weight, float
+    :param config: The config
+    """
     if config.USE_STRATEGY_SELECTOR:
         imag_states_plus_strategy = []
         for i in range(len(imag_states)):
@@ -180,6 +196,7 @@ def actor_loss(imag_states, actions, av_actions, old_policy, advantage, actor, e
         imag_states_plus_strategy = torch.stack(imag_states_plus_strategy, dim=0)
         _, new_policy = actor(imag_states_plus_strategy)
         gather_index = 3
+            
     else:
         _, new_policy = actor(imag_states)
         gather_index = 2
