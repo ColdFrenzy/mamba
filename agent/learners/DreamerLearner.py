@@ -68,6 +68,7 @@ class DreamerLearner:
         else:
             self.critic = Critic(config.FEAT, config.HIDDEN).to(config.DEVICE)
         self.use_strategy_selector = config.USE_STRATEGY_SELECTOR
+        self.strategy_duration = config.STRATEGY_DURATION
         self.use_trajectory_synthesizer = config.USE_TRAJECTORY_SYNTHESIZER
         self.use_global_trajectory_synthesizer = config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER
         self.trajectory_synthesizer = None
@@ -92,15 +93,15 @@ class DreamerLearner:
         """Initialize the trajectory synthesizer
         """
         self.trajectory_synthesizer =  TrajectorySynthesizerRNN(self.config.ACTION_SIZE, self.config.DETERMINISTIC, self.config.STOCHASTIC,\
-                                                    self.config.HORIZON, self.config.TRAJECTORY_SYNTHESIZER_HIDDEN,\
+                                                    self.config.STRATEGY_DURATION, self.config.TRAJECTORY_SYNTHESIZER_HIDDEN,\
                                                     self.config.TRAJECTORY_SYNTHESIZER_LAYERS, n_agents=n_agents).to(self.config.DEVICE)
         # for InfoMax over strategies (predict selected strategy from encoded trajectory)
         if self.use_global_trajectory_synthesizer:
             self.strat_features = DenseBinaryModel((self.config.DETERMINISTIC+self.config.STOCHASTIC+self.config.ACTION_SIZE)*n_agents,\
-                                                self.config.N_STRATEGIES, self.config.STRAT_LAYERS, self.config.STRAT_HIDDEN) 
+                                                self.config.N_STRATEGIES, self.config.STRAT_LAYERS, self.config.STRAT_HIDDEN).to(self.config.DEVICE)
         else:
             self.strat_features = DenseBinaryModel(self.config.DETERMINISTIC+self.config.STOCHASTIC+self.config.ACTION_SIZE,\
-                                                self.config.N_STRATEGIES, self.config.STRAT_LAYERS, self.config.STRAT_HIDDEN) 
+                                                self.config.N_STRATEGIES, self.config.STRAT_LAYERS, self.config.STRAT_HIDDEN).to(self.config.DEVICE)
         initialize_weights(self.trajectory_synthesizer, mode='xavier')
         initialize_weights(self.strat_features, mode='xavier')
         self.init_trajectory_synthesizer_optimizer()
@@ -170,7 +171,9 @@ class DreamerLearner:
                                                                             self.critic if self.config.ENV_TYPE == Env.STARCRAFT
                                                                             else self.old_critic,
                                                                             self.config,
-                                                                            samples['neighbors_mask'])
+                                                                            samples['neighbors_mask'],
+                                                                            rollout_len=self.config.HORIZON)
+        # TODO: strategy_duration and horizon are not the same, pay attention on how PPO uses policy with longer sequences for each strategy
         if self.use_strategy_advantage:
             strategy_advantage = []
             mean_strategy_value = torch.mean(returns.detach(), dim=0)
@@ -186,12 +189,15 @@ class DreamerLearner:
         for epoch in range(self.config.PPO_EPOCHS):
             inds = np.random.permutation(actions.shape[1]) if self.use_strategy_selector else np.random.permutation(actions.shape[0])
             step = 2000
-            ts_step = step // self.config.HORIZON
+            num_of_updates = len(inds) // step + 1
             ts_inds = np.random.permutation(self.config.BATCH_SIZE*(self.config.SEQ_LENGTH-2))
+            ts_step = ts_inds.shape[0] // num_of_updates
+            ts_i = 0
             for i in range(0, len(inds), step):
                 self.cur_update += 1
                 idx = inds[i:i + step]
-                ts_idx = ts_inds[i:i + ts_step]
+                ts_idx = ts_inds[ts_i:ts_i + ts_step]
+                ts_i += ts_step
                 if self.use_strategy_selector:
                     if self.use_trajectory_synthesizer:
                         _, _, actions_with_grad, ts_imag_feat, _ = actor_rollout(samples['observation'],
@@ -203,25 +209,24 @@ class DreamerLearner:
                                                                         self.config,
                                                                         samples['neighbors_mask'],
                                                                         detach_results=False,
-                                                                        indices=ts_idx)
+                                                                        indices=ts_idx,
+                                                                        rollout_len=self.strategy_duration)
                         trajectories = torch.cat([ts_imag_feat, actions_with_grad], dim=-1)
                         traj_embed = [] 
                         # imag_feat.size = [n_strategies, horizon-1, (seq_len-2)*batch_size, n_agents*(stoch_t+deter_t)]
                         for traj in range(len(trajectories)):
                             traj_embed.append(self.trajectory_synthesizer(trajectories[traj]))
                         traj_embed = torch.stack(traj_embed, dim=0)
-                        ts_loss = info_nce_loss(traj_embed, multiple_positives=False)
-                        if self.use_wandb:
-                            wandb.log({'Agent/ts_loss': ts_loss.mean().item()})      
+                        ts_loss = info_nce_loss(traj_embed, multiple_positives=False)  
                         strategy_infomax_loss =  info_loss_strategy(traj_embed, self.strat_features)
                         if self.use_wandb and np.random.randint(100) == 9:
                             with torch.no_grad():
                                 traj_embed_fig = generate_trajectory_scatterplot(traj_embed, red_type="tsne")
-                            wandb.log({'Plots/Trajectory_Embeddings': wandb.Image(traj_embed_fig)})
-                    loss = actor_loss(imag_feat[:, idx], actions[:, idx], av_actions[:, idx] if av_actions is not None else None,
+                                wandb.log({'Plots/Trajectory_Embeddings': wandb.Image(traj_embed_fig)})
+                    ac_loss = actor_loss(imag_feat[:, idx], actions[:, idx], av_actions[:, idx] if av_actions is not None else None,
                                     old_policy[:, idx], adv[:, idx], self.actor, self.entropy, self.config)
                     if self.use_trajectory_synthesizer:
-                        loss = loss + ts_loss + strategy_infomax_loss
+                        loss = ac_loss + ts_loss + strategy_infomax_loss
                 else:
                     loss = actor_loss(imag_feat[idx], actions[idx], av_actions[idx] if av_actions is not None else None,
                                     old_policy[idx], adv[idx], self.actor, self.entropy, self.config)           
@@ -232,7 +237,10 @@ class DreamerLearner:
                 else:
                     val_loss = value_loss(self.critic, imag_feat[idx], returns[idx])
                 if self.use_wandb and np.random.randint(20) == 9:
-                    wandb.log({'Agent/val_loss': val_loss, 'Agent/actor_loss': loss, 'Agent/infomax_loss': strategy_infomax_loss})
+                    if self.trajectory_synthesizer:
+                        wandb.log({'Agent/val_loss': val_loss.item(), 'Agent/loss': loss.item(), 'Agent/actor_loss': ac_loss.item(), 'Agent/infomax_loss': strategy_infomax_loss.item(), 'Agent/ts_loss': ts_loss.item()})
+                    else:
+                        wandb.log({'Agent/val_loss': val_loss.item(), 'Agent/actor_loss': loss.item()})
                 self.apply_optimizer(self.critic_optimizer, self.critic, val_loss, self.config.GRAD_CLIP_POLICY)
 
 

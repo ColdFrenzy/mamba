@@ -8,7 +8,7 @@ class TrajectorySynthesizerRNN(nn.Module):
     """Trajectory Synthesizer implemented through an LSTM network.
     """
     def __init__(
-        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, activation=nn.ELU, dropout=0.1, n_agents=None
+        self, action_size, deter_size, stoch_size, strategy_duration, hidden_size, num_layers, activation=nn.ELU, dropout=0.1, n_agents=None
         ):
         super().__init__()
         self.action_size = action_size
@@ -16,7 +16,7 @@ class TrajectorySynthesizerRNN(nn.Module):
         self.stoch_size = stoch_size
         self.n_agents = n_agents
 
-        self.horizon = horizon
+        self.strategy_duration = strategy_duration
         if self.n_agents is not None:
             self.embedding_size = (deter_size + stoch_size + action_size)*n_agents
         else:
@@ -47,7 +47,7 @@ class TrajectorySynthesizerRNN(nn.Module):
     # def forward(self, model_state):
     #     """        
     #     LSTM expects input of shape (seq_len, batch_size, input_size) and outputs a tuple (seq_len, batch_size, hidden_size)
-    #     :params model_state: tensor of shape (horizon, seq_len*batch_size, num_agents, deter_size + stoch_size + action_size)
+    #     :params model_state: tensor of shape (strategy_duration, seq_len*batch_size, num_agents, deter_size + stoch_size + action_size)
     #     :return output: tensor of shape (seq_len*batch_size, deter_size + stoch_size + action_size)
     #     """
     #     output, (h_n, c_n) = self.model[0](model_state)
@@ -57,14 +57,14 @@ class TrajectorySynthesizerRNN(nn.Module):
     def forward(self, model_state):
         """
         LSTMCell expects input of shape (seq_len, batch_size, input_size).
-        Model state is of shape (horizon, batch_size, num_agents, deter_size + stoch_size + action_size)
+        Model state is of shape (strategy_duration, batch_size, num_agents, deter_size + stoch_size + action_size)
         """
         batch_size = model_state.size(1)
         h_t = torch.zeros(batch_size, self.hidden).to(model_state.device)  # Initialize hidden state
         c_t = torch.zeros(batch_size, self.hidden).to(model_state.device)  # Initialize cell state
-        horizon = model_state.size(0)
+        strategy_duration = model_state.size(0)
         # Process each time step
-        for t in range(horizon):
+        for t in range(strategy_duration):
             # Get the input for the current time step
             input_t = model_state[t]  # Shape: (batch_size, num_agents, embedding_size)
 
@@ -83,13 +83,13 @@ class TrajectorySynthesizerAtt(nn.Module):
     """Trajectory Synthesizer implemented through a Transformer network.
     """
     def __init__(
-        self, action_size, deter_size, stoch_size, horizon, hidden_size, num_layers, n_heads = 8, activation=nn.ELU, dropout=0.1, 
+        self, action_size, deter_size, stoch_size, strategy_duration, hidden_size, num_layers, n_heads = 8, activation=nn.ELU, dropout=0.1, 
         ):
         super().__init__()
         self.action_size = action_size
         self.deter_size = deter_size
         self.stoch_size = stoch_size
-        self.horizon = horizon
+        self.strategy_duration = strategy_duration
         self.act_fn = activation
         self.dropout = dropout
         self.n_layers = num_layers
@@ -97,7 +97,7 @@ class TrajectorySynthesizerAtt(nn.Module):
         self.n_heads = n_heads
         self.embedding_size = deter_size + stoch_size + action_size
 
-        self.pos_enc  = PositionalEncoding(self.horizon, self.embedding_size)
+        self.pos_enc  = PositionalEncoding(self.strategy_duration, self.embedding_size)
         self.transformer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.embedding_size, nhead=5,
                                                                         dim_feedforward=self.hidden,
                                                                         dropout=self.dropout, batch_first=False), num_layers=self.n_layers)
@@ -105,7 +105,7 @@ class TrajectorySynthesizerAtt(nn.Module):
 
     def forward(self, model_state):
         """One way to use transformers as seq-to-one is to average the results
-        :params model_state: tensor of shape (horizon, seq_len*batch_size, deter_size + stoch_size + action_size)
+        :params model_state: tensor of shape (strategy_duration, seq_len*batch_size, deter_size + stoch_size + action_size)
         :return output: tensor of shape (seq_len*batch_size, deter_size + stoch_size + action_size)
         """
         model_state = self.pos_enc(model_state)
@@ -143,13 +143,13 @@ class PositionalEncoding(nn.Module):
 
 if __name__ == "__main__":
     num_strategies = 3
-    horizon = 5
+    strategy_duration = 5
     stoch_size = 1024
     deter_size = 256
     action_size = 5
     embedding_size = 256
     batch_size = 20
-    input_tensor = torch.rand(num_strategies, horizon, batch_size,stoch_size + deter_size + action_size)
+    input_tensor = torch.rand(num_strategies, strategy_duration, batch_size,stoch_size + deter_size + action_size)
     traj_embed = []
     ts_info={"type": "rnn", # rnn or attention
             "num_layers": 8,
@@ -159,12 +159,12 @@ if __name__ == "__main__":
             "dropout": 0.1,
         }
     if ts_info["type"] == "rnn":
-        model = TrajectorySynthesizerRNN(action_size, deter_size, stoch_size, horizon, ts_info=ts_info)
+        model = TrajectorySynthesizerRNN(action_size, deter_size, stoch_size, strategy_duration, ts_info=ts_info)
         for tj in range(num_strategies):
             traj_embed.append(model(input_tensor[tj]))
         traj_embed = torch.stack(traj_embed, dim=0)
     elif ts_info["type"] == "attention":
-        model = TrajectorySynthesizerAtt(action_size, deter_size, stoch_size, horizon, ts_info=ts_info)
+        model = TrajectorySynthesizerAtt(action_size, deter_size, stoch_size, strategy_duration, ts_info=ts_info)
         for tj in range(num_strategies):
             traj_embed.append(model(input_tensor[tj]))
         traj_embed = torch.stack(traj_embed, dim=0)

@@ -122,7 +122,7 @@ class DreamerRunner:
             # if wandb is already open, let's close it
             if wandb.run is not None:
                 wandb.finish()
-            wandb.init(project= "agree_before_acting_latest", dir=LOG_DIR, config=self.learner.config.__dict__)
+            wandb.init(project= f"{self.env_name}", dir=LOG_DIR, config=self.learner.config.__dict__)
 
         config_file_path = save_dir / "config.json"
         save_full_config({"controller_config": self.controller_config , "learner_config": self.learner.config}, config_file_path)
@@ -255,15 +255,17 @@ def create_run_name(config, env_name, max_steps=None, eval = False, random_seed=
     file_name = file_name + "_SEED=" + str(random_seed)
     if config.USE_SHARED_REWARD:
         file_name = file_name + "_SR"
-    if config.USE_STRATEGY_ADVANTAGE:
-        file_name = file_name + "_SA"
     if config.USE_AUGMENTED_CRITIC:
         file_name = file_name + "_AC"
-    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+    if config.USE_STRATEGY_SELECTOR:
+        file_name = file_name + "_SS"
+    if config.USE_STRATEGY_ADVANTAGE and config.USE_STRATEGY_SELECTOR:
+        file_name = file_name + "_SA"
+    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER and config.USE_STRATEGY_SELECTOR:
         file_name = file_name + "_TS"
-    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER and config.USE_STRATEGY_SELECTOR:
         file_name = file_name + "_GTS"
-    if config.USE_LAST_STATE_VALUE:
+    if config.USE_LAST_STATE_VALUE and config.USE_STRATEGY_SELECTOR:
         file_name = file_name + "_LSV"
     if max_steps is not None:
         file_name = file_name + "_" + abbreviate_number(max_steps)
@@ -281,15 +283,17 @@ def return_tags(config, env_name, max_steps=None, eval=False):
     tags.append(env_name)
     if config.USE_SHARED_REWARD:
         tags.append("SR")
-    if config.USE_STRATEGY_ADVANTAGE:
-        tags.append("SA")
     if config.USE_AUGMENTED_CRITIC:
         tags.append("AC")
-    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+    if config.USE_STRATEGY_ADVANTAGE and config.USE_STRATEGY_SELECTOR:
+        tags.append("SA")
+    if config.USE_STRATEGY_SELECTOR:
+        tags.append("SS")
+    if config.USE_TRAJECTORY_SYNTHESIZER and not config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER and config.USE_STRATEGY_SELECTOR:
         tags.append("TS")
-    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER:
+    elif config.USE_TRAJECTORY_SYNTHESIZER and config.USE_GLOBAL_TRAJECTORY_SYNTHESIZER and config.USE_STRATEGY_SELECTOR:
         tags.append("GTS")
-    if config.USE_LAST_STATE_VALUE:
+    if config.USE_LAST_STATE_VALUE and config.USE_STRATEGY_SELECTOR:
         tags.append("LSV")
     if max_steps is not None:
         tags.append(abbreviate_number(max_steps))

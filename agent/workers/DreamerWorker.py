@@ -171,12 +171,13 @@ class DreamerWorker:
                                                     }
                                                    
     
-    
+    @torch.no_grad()
     def eval(self, dreamer_params, n_episodes, learner_config=None, return_all=False, return_strategy_plot=False, trajectory_synthesizer=None):
         """evaluate the controller over n_episodes
         :param dreamer_params: dict of parameters for the controller
         :param n_episodes: int, number of episodes to evaluate
         :param return_all: bool, if True return the metrics for each episode
+        :param return_strategy_plot: bool, if True return the strategy plot (used only in the DreamerServerEval)
         """
         self.controller.receive_params(dreamer_params)
         if learner_config is not None:
@@ -261,8 +262,7 @@ class DreamerWorker:
         ###########################################################
         if return_strategy_plot and learner_config is not None and trajectory_synthesizer is not None:
             samples = dreamer_memory.sample(learner_config.MODEL_BATCH_SIZE)
-            with torch.no_grad():
-                generate_trajectories(samples, self.controller.model, self.controller.actor, self.controller.critic, self.controller.config, trajectory_synthesizer, self.controller.config.USE_WANDB)
+            generate_trajectories(samples, self.controller.model, self.controller.actor, self.controller.critic, self.controller.config, trajectory_synthesizer, self.controller.config.USE_WANDB)
 
         win_rate = win_rate / n_episodes
         mean_steps = mean_steps / n_episodes

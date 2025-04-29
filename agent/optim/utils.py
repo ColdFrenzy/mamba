@@ -148,7 +148,7 @@ def state_divergence_loss(prior, posterior, config, reduce=True, balance=0.2):
 
 
 
-def info_nce_loss(traj_embed, temperature=0.1, multiple_positives=True, num_of_batches=16, seq_len= 10):
+def info_nce_loss(traj_embed, temperature=0.05, multiple_positives=True, num_of_batches=16, seq_len= 10):
     """
     info_nce_loss function for contrastive learning without explicit labels.
     
@@ -189,6 +189,7 @@ def info_nce_loss(traj_embed, temperature=0.1, multiple_positives=True, num_of_b
         else:
             positive_samples.append(sim_matrix[strat*batch_size:(strat+1)*batch_size, strat*batch_size:(strat+1)*batch_size][label_submatrix.to(bool)])
         remaining_samples.append(torch.cat([sim_matrix[strat*batch_size:(strat+1)*batch_size, :strat*batch_size], sim_matrix[strat*batch_size:(strat+1)*batch_size, (strat+1)*batch_size:]], dim=-1))
+        # remaining_samples.append(sim_matrix[strat*batch_size:(strat+1)*batch_size, (strat+1)*batch_size:])
     if multiple_positives:
         positive_samples = torch.cat(positive_samples, dim=0)
     else:

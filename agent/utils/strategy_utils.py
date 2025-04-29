@@ -114,7 +114,9 @@ def use_tsne(tensor, labels):
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
     plt.title('t-SNE of Contrastive Learning Results')
-    plt.legend(loc='upper right')
+    unique_labels = np.unique(labels)
+    legend_labels = [f"Strategy {int(label)}" for label in unique_labels]
+    plt.legend(legend_labels, fontsize="x-large")
     traj_img = plt.gcf()
         
     plt.close(fig)

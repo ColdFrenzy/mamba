@@ -65,7 +65,7 @@ def model_loss(config, model, obs, action, av_action, reward, done, fake, last):
     return model_loss
 
 
-def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True, indices=None):
+def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mask=None, detach_results=True, indices=None, rollout_len=None):
     """rollout the actor and the critic in the imagination
     :param obs: The observations, shape (time_steps, batch_size, n_agents, obs_size)
     :param action: The actions, shape (time_steps, batch_size, n_agents, action_size)
@@ -95,12 +95,12 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
                 nn_mask = nn_mask[indices]
                 post = post.map(lambda x: x[indices])
             nn_mask = nn_mask.repeat(8,1,1).detach()
-            items = rollout_policy_with_strategies(model.transition, nn_mask, model.av_action, config.HORIZON, actor, post, config.N_STRATEGIES)
+            items = rollout_policy_with_strategies(model.transition, nn_mask, model.av_action, rollout_len, actor, post, config.N_STRATEGIES)
         else:
             nn_mask = neighbors_mask[:-1].reshape((neighbors_mask.shape[0]-1) * neighbors_mask.shape[1], n_agents, -1) #  [720, 3, 3]
             nn_mask = nn_mask.repeat(8,1,1).detach()
-            items = rollout_policy(model.transition, model.av_action, config.HORIZON, actor, post, neighbors_mask=nn_mask)
-    imag_feat = items["imag_states"].get_features() # [n_strategies, horizon, seq_len*batch_size, stoch_t + deter_t]
+            items = rollout_policy(model.transition, model.av_action, rollout_len, actor, post, neighbors_mask=nn_mask)
+    imag_feat = items["imag_states"].get_features() # [n_strategies, rollout_len, seq_len*batch_size, stoch_t + deter_t]
     if config.USE_STRATEGY_SELECTOR:
         imag_rew_feat = torch.cat([items["imag_states"].stoch[:,:-1], items["imag_states"].deter[:, 1:]], -1) # [stoch_t, deter_t+1]
     else:
@@ -113,7 +113,7 @@ def actor_rollout(obs, action, last, model, actor, critic, config, neighbors_mas
             output = [items["actions"][:, :-1].detach(),
                     items["av_actions"][:, :-1].detach() if items["av_actions"] is not None else None,
                     items["old_policy"][:, :-1].detach(), imag_feat[:, :-1].detach(), returns.detach()]
-            # return output # return [n_strategies, horizon, batch*seq_len, n_agent*features]
+            # return output # return [n_strategies, rollout_len, batch*seq_len, n_agent*features]
         else:
             items["new_policy"] = items["actions"] + items["old_policy"] - items["old_policy"].detach()
             output = [items["actions"][:, :-1],

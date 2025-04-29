@@ -29,7 +29,7 @@ if USE_RAY:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default="starcraft", help='starcraft or GridWorld env')
-    parser.add_argument('--env_name', type=str, default="8m", help='Specific setting')
+    parser.add_argument('--env_name', type=str, default="3m", help='Specific setting')
     parser.add_argument('--n_workers', type=int, default=2, help='Number of workers')
     parser.add_argument('--continue_training', type=bool, default=False, help='Continue training')
     parser.add_argument('--load_path', type=str, default=None, help='Path to load the full model (agent + world model)')
